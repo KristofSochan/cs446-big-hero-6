@@ -8,14 +8,14 @@ All members can take individual tasks within these divisions (i.e. anyone can ta
 
 - Kristof is our team lead, and is responsible for coordinating the project, deliverables, and meetings.
 - Owen is our technical lead, and is responsible for technical documentation, architecture diagrams, etc.
-- XXX leads the front-end development for the app.
+- Adam leads the front-end development for the app.
 - Kushal leads the back-end database development, including database work
 - Anees will lead the integration of the physical NFC tags into the app
 
 Other role ideas:
 
-- The example contract had a "testing lead", but an alternative can be that everyone will be responsible for their own tests eventually (backend tests, NFC tests, frontend tests, etc)
-- We could split the technical lead role to have a dedicated role for someone who works on the architecture deliverables for the course
+- The example contract had a "testing lead", but an alternative for now will be that everyone will be responsible for their own tests eventually (backend tests, NFC tests, frontend tests, etc)
+- We could split the technical lead role to have a dedicated role for someone who works on the architecture deliverables for the course. We should explore how much work this will be.
 
 ## Communication
 
