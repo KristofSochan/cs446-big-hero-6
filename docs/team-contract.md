@@ -15,7 +15,7 @@ All members can take individual tasks within these divisions (i.e. anyone can ta
 Other role ideas:
 
 - The example contract had a "testing lead", but an alternative for now will be that everyone will be responsible for their own tests (backend tests, NFC tests, frontend tests, etc).
-- We could split the technical lead role to have a dedicated role for someone who works on the architecture deliverables for the course. We should explore how much work this will be..
+- We could split the technical lead role to have a dedicated role for someone who works on the architecture deliverables for the course. We should explore how much work this will be.
 
 ## Communication
 
@@ -44,3 +44,22 @@ Other role ideas:
 - Each member will take turns listening as well as talking, and active listening will be a strategy for all group discussions
 
 - Kristof will take notes during all meetings and post notes in docs/meeting_minutes
+
+## Communication Standards and Conflict Resolution
+
+ Team members are expected to communicate respectfully with each other, listen, and consider different perspectives. We will maintain a respectful and safe environment where every member feels comfortable voicing opinions and concerns without fear of judgment.
+
+We understand that health conflict is necessary for growth and innovation, and we will approach these disagreements with open minds. 
+
+### Conflict Management Process
+
+We plan to use the **Situation–Behavior–Impact (SBI) model** to address concerns within our group:
+- We focus on specific situations and behaviors
+- Discuss the impact of those behaviors on the team or project
+- Avoid making judgments or assumptions
+
+Team members will make sure to be open about receiving and providing ideas to and from all members. We will also approach disagreements with curiosity and ask each other clarifying questions. We will welcome divergent thinking early in discussions but recognize when it's time to converge on a decision.
+
+For making decisions, we will aim to unify on a solution whenever possible. If we cannot collectively agree on something, the group will adopt the solution that best aligns with the team's goals and deadlines. We will ensure balanced participation amongst all group members, and make sure others can input in case of dominance.
+
+
