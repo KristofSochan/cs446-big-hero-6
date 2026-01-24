@@ -6,11 +6,12 @@ This is the team contract for Big Hero 6
 
 All members can take individual tasks within these divisions (i.e. anyone can take on frontend, backend, NFC, etc. tasks), but the lead for that division serves as the person in-command and organizer for that portion of our project.
 
-- Kristof is our team lead, and is responsible for coordinating the project, deliverables, and meetings
-- Owen is our technical lead, and is responsible for technical documentation, architecture diagrams, etc
-- Adam leads the front-end development for the app
-- Kushal leads the back-end database development, including database work
-- Anees will lead the integration of the physical NFC tags into the app
+- Kristof is our team lead, and is responsible for coordinating the project, deliverables, and meetings.
+- Owen is our technical lead, and is responsible for technical documentation, architecture diagrams, etc.
+- Adam leads the front-end development for the app.
+- Kushal leads the back-end database development, including database work.
+- Anees will lead the integration of the physical NFC tags into the app.
+- Ryan will be a generalist programmer helping wherever is needed. 
 
 Other role ideas:
 
