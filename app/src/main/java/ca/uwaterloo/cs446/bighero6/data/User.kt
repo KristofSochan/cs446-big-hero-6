@@ -8,8 +8,8 @@ import com.google.firebase.firestore.ServerTimestamp
 @IgnoreExtraProperties
 data class User(
     @DocumentId
-    val userId: String = "",
-    val deviceId: String = "",
+    val docId: String = "",
+    val id: String = "", // same val as docId but is a standard field of the document
     val fcmToken: String? = null,
     val currentWaitlists: List<String> = emptyList(),
     @ServerTimestamp

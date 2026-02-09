@@ -8,7 +8,8 @@ import com.google.firebase.firestore.ServerTimestamp
 @IgnoreExtraProperties
 data class Station(
     @DocumentId
-    val id: String = "",
+    val docId: String = "",
+    val id: String = "", // same val as docId but is a standard field of the document
     val name: String = "",
     val isActive: Boolean = true,
     val sessionDurationMinutes: Int = 15,
