@@ -1,7 +1,9 @@
 package ca.uwaterloo.cs446.bighero6.data
 
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentId
 import com.google.firebase.firestore.IgnoreExtraProperties
+import com.google.firebase.firestore.ServerTimestamp
 
 @IgnoreExtraProperties
 data class Station(
@@ -12,7 +14,9 @@ data class Station(
     val sessionDurationMinutes: Int = 15,
     // Waitlist data embedded
     val attendees: List<Attendee> = emptyList(),
-    val currentSession: CurrentSession? = null
+    val currentSession: CurrentSession? = null,
+    @ServerTimestamp
+    val createdAt: Timestamp? = null  // Set by server on creation
 ) {
     /**
      * Calculate position of a user in the waitlist.
