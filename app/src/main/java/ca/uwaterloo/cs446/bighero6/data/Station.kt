@@ -12,7 +12,7 @@ data class Station(
     val id: String = "", // same val as docId but is a standard field of the document
     val name: String = "",
     val isActive: Boolean = true,
-    val sessionDurationMinutes: Int = 15,
+    val sessionDurationSeconds: Int = 900,
     // Waitlist data embedded
     val attendees: List<Attendee> = emptyList(),
     val currentSession: CurrentSession? = null,
@@ -26,19 +26,16 @@ data class Station(
     fun calculatePosition(userId: String): Int {
         val waitingAttendees = attendees
             .filter { it.status == "waiting" }
-            .sortedBy { it.joinedAt.seconds }
+            .sortedBy { it.joinedAt.toDate().time }
         
         val index = waitingAttendees.indexOfFirst { it.userId == userId }
         return if (index >= 0) index + 1 else 0
     }
     
-    /**
-     * Check if user is at position 1
-     */
     fun isAtPositionOne(userId: String): Boolean {
         val waitingAttendees = attendees
             .filter { it.status == "waiting" }
-            .sortedBy { it.joinedAt.seconds }
+            .sortedBy { it.joinedAt.toDate().time }
         
         return waitingAttendees.isNotEmpty() && waitingAttendees[0].userId == userId
     }

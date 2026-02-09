@@ -99,14 +99,15 @@ class FirestoreRepository {
     
     /**
      * Start session for user at position 1
+     * Automatically expires any existing expired session before starting
      */
     suspend fun startSession(
         stationId: String,
         userId: String,
-        sessionDurationMinutes: Int = 15
+        sessionDurationSeconds: Int = 900
     ): Result<Unit> {
         return try {
-            val sessionDurationMs = sessionDurationMinutes * 60 * 1000L
+            val sessionDurationMs = sessionDurationSeconds * 1000L
             val expiresAt = Timestamp(Date(System.currentTimeMillis() + sessionDurationMs))
             
             // Get current station to find user entry
@@ -119,6 +120,19 @@ class FirestoreRepository {
             
             db.runTransaction { transaction ->
                 val stationRef = db.collection("stations").document(stationId)
+                val currentStation = transaction.get(stationRef).toObject(Station::class.java)
+                
+                // Check if current session exists and is expired
+                val currentSession = currentStation?.currentSession
+                val now = Timestamp.now()
+                if (currentSession?.expiresAt != null && 
+                    currentSession.expiresAt.seconds * 1000 < now.seconds * 1000) {
+                    // Expired session exists, clear it
+                    transaction.update(stationRef, "currentSession", null)
+                } else if (currentSession != null) {
+                    // Active session exists, can't start new one
+                    throw IllegalStateException("Station is currently in use")
+                }
                 
                 // Update current session
                 transaction.update(
@@ -189,6 +203,22 @@ class FirestoreRepository {
             db.collection("users")
                 .document(userId)
                 .update("fcmToken", fcmToken)
+                .await()
+            
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * End session - clears currentSession so next person can start
+     */
+    suspend fun endSession(stationId: String): Result<Unit> {
+        return try {
+            db.collection("stations")
+                .document(stationId)
+                .update("currentSession", null)
                 .await()
             
             Result.success(Unit)

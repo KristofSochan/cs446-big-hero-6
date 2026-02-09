@@ -19,7 +19,7 @@ export interface CurrentSession {
 export interface Station {
   name: string;
   isActive: boolean;
-  sessionDurationMinutes?: number;
+  sessionDurationSeconds?: number;
   attendees: Attendee[];
   currentSession?: CurrentSession;
 }
