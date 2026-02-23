@@ -78,7 +78,8 @@ captures/
 *.keystore
 
 # Google Services (e.g. APIs or Firebase)
-# google-services.json
+# Real key lives only locally; use google-services.json.example as template
+app/google-services.json
 
 # Firebase
 .firebase/

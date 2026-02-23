@@ -11,11 +11,12 @@
 
 ## Developer Setup (Each Developer)
 
-1. Install CLI: `npm install -g firebase-tools`
-2. Login: `firebase login`
-3. Set project: `firebase use YOUR_PROJECT_ID`
-4. Install deps: `cd functions && npm install`
-5. Build: `cd functions && npm run build`
+1. Copy `app/google-services.json.example` → `app/google-services.json` and replace `ADD_API_KEY` with the project API key from Firebase Console.
+2. Install CLI: `npm install -g firebase-tools`
+3. Login: `firebase login`
+4. Set project: `firebase use YOUR_PROJECT_ID`
+5. Install deps: `cd functions && npm install`
+6. Build: `cd functions && npm run build`
 
 ## Deploy Functions
 
