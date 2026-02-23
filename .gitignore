@@ -78,7 +78,19 @@ captures/
 *.keystore
 
 # Google Services (e.g. APIs or Firebase)
-# google-services.json
+# Real key lives only locally; use google-services.json.example as template
+app/google-services.json
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+# .firebaserc is ignored (contains project-specific config)
+
+# Cloud Functions
+functions/lib/
+functions/node_modules/
+functions/.env
 
 # Android Patch
 gen-external-apklibs
