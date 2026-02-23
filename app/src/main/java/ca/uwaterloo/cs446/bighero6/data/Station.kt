@@ -13,6 +13,7 @@ data class Station(
     val name: String = "",
     val isActive: Boolean = true,
     val sessionDurationSeconds: Int = 900,
+    val mode: String = "manual", // "manual" or "timed"
     // Waitlist data embedded
     val attendees: List<Attendee> = emptyList(),
     val currentSession: CurrentSession? = null,

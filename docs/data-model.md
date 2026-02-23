@@ -25,6 +25,7 @@ data class Station(
     val name: String = "",
     val isActive: Boolean = true,
     val sessionDurationMinutes: Int = 15,
+    val mode: String = "manual", // "manual" or "timed"
     // Waitlist data embedded
     val attendees: List<Attendee> = emptyList(),
     val currentSession: CurrentSession? = null
@@ -37,6 +38,7 @@ data class Station(
 - `name` - Display name of the station
 - `isActive` - Whether the station is accepting new attendees
 - `sessionDurationMinutes` - How long each session lasts (default: 15 minutes)
+- `mode` - Waitlist/session behavior: `"manual"` (session ends only when user taps **End Session**) or `"timed"` (session automatically expires after `sessionDurationMinutes`)
 - `attendees` - Array of people waiting/attending
 - `currentSession` - Currently active session (null if no one is using it)
 
@@ -52,6 +54,7 @@ data class Station(
   "name": "Pinball Machine #1",
   "isActive": true,
   "sessionDurationMinutes": 15,
+  "mode": "manual",
   "attendees": [
     {
       "userId": "user1",
