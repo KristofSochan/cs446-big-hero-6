@@ -38,7 +38,9 @@ import {onDocumentUpdated} from "firebase-functions/v2/firestore";
 export const onStationUpdate = onDocumentUpdated(
   "stations/{stationId}",
   async (event) => {
+    // Document state before the update
     const before = event.data?.before.data();
+    // Document state after the updates
     const after = event.data?.after.data();
     const stationId = event.params.stationId;
 
