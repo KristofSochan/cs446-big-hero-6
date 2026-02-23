@@ -155,7 +155,7 @@ class FirestoreRepository {
     /**
      * Get or create user document
      */
-    suspend fun getOrCreateUser(userId: String): User {
+    suspend fun getOrCreateUser(userId: String, fcmToken: String?): User {
         return try {
             val userDoc = db.collection("users")
                 .document(userId)
@@ -163,20 +163,20 @@ class FirestoreRepository {
                 .await()
             
             if (userDoc.exists()) {
-                userDoc.toObject(User::class.java) ?: createUserDocument(userId)
+                userDoc.toObject(User::class.java) ?: createUserDocument(userId, fcmToken)
             } else {
-                createUserDocument(userId)
+                createUserDocument(userId, fcmToken)
             }
         } catch (e: Exception) {
             // Fallback: create user document
-            createUserDocument(userId)
+            createUserDocument(userId, fcmToken)
         }
     }
     
-    private suspend fun createUserDocument(userId: String): User {
+    private suspend fun createUserDocument(userId: String, fcmToken: String?): User {
         val user = User(
             id = userId,  // Stored field "id" - mirrors document ID
-            fcmToken = null,
+            fcmToken = fcmToken,
             currentWaitlists = emptyList()
             // docId will be auto-mapped from document ID when reading
             // createdAt will be set by server via @ServerTimestamp

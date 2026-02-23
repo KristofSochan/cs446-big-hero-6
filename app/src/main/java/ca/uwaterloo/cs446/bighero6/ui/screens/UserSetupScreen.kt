@@ -32,7 +32,8 @@ fun UserSetupScreen(navController: NavController) {
             error = null
             try {
                 val repository = FirestoreRepository()
-                repository.getOrCreateUser(userId)
+                val fcmToken = DeviceIdManager.getFcmToken(context)
+                repository.getOrCreateUser(userId, fcmToken)
                 navController.navigate(Screen.Home.route) {
                     popUpTo(Screen.UserSetup.route) { inclusive = true }
                 }

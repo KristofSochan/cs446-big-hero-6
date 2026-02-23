@@ -5,6 +5,7 @@ import android.provider.Settings
 import android.provider.Settings.Global.getString
 import android.util.Log
 import android.widget.Toast
+import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import com.google.android.gms.tasks.OnCompleteListener
 import com.google.firebase.firestore.auth.Token
 import com.google.firebase.messaging.FirebaseMessaging
@@ -69,6 +70,21 @@ object DeviceIdManager {
 
         // TODO if stored user already exists, update
         // We don't know when fcm token will be rotated so good to be safe
+
+        val storedUserId = prefs.getString(KEY_USER_ID, null)
+        if (storedUserId != null) {
+            // we already have a user on the app and want to force update
+            // FirestoreRepository.updateFcmToken
+        }
+    }
+
+    fun getFcmToken(context: Context) : String?
+    {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        // Check if we already have a stored user ID
+        val storedFCMToken : String? = prefs.getString(KEY_FCM_TOKEN, null)
+        return storedFCMToken
     }
 
     /**
