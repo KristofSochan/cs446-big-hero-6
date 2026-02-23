@@ -58,12 +58,12 @@ class FirestoreRepository {
                 id = stationId,
                 createdAt = station.createdAt ?: Timestamp.now()
             )
-            
+
             db.collection("stations")
                 .document(stationId)
                 .set(stationToSave)
                 .await()
-            
+
             Result.success(stationId)
         } catch (e: Exception) {
             Result.failure(e)
@@ -182,7 +182,7 @@ class FirestoreRepository {
             Result.failure(e)
         }
     }
-    
+
     /**
      * Add user to waitlist (transaction-safe).
      * Attendees stored as map keyed by userId; joinedAt uses server timestamp.
@@ -299,6 +299,9 @@ class FirestoreRepository {
         mode: String = "manual"
     ): Result<Unit> {
         return try {
+            val sessionDurationMs = sessionDurationSeconds * 1000L
+            val expiresAt = Timestamp(Date(System.currentTimeMillis() + sessionDurationMs))
+            
             // Get current station to find user entry
             val station = getStation(stationId) ?: return Result.failure(
                 IllegalStateException("Station not found")
@@ -332,7 +335,7 @@ class FirestoreRepository {
     /**
      * Get or create user document
      */
-    suspend fun getOrCreateUser(userId: String, name: String? = null): User {
+    suspend fun getOrCreateUser(userId: String, name: String? = null, fcmToken: String? = null): User {
         return try {
             val userDoc = db.collection("users")
                 .document(userId)
@@ -349,11 +352,11 @@ class FirestoreRepository {
                     existingUser ?: createUserDocument(userId, name)
                 }
             } else {
-                createUserDocument(userId, name)
+                createUserDocument(userId, name, fcmToken)
             }
         } catch (e: Exception) {
             // Fallback: create user document
-            createUserDocument(userId, name)
+            createUserDocument(userId, name, fcmToken)
         }
     }
 
@@ -371,12 +374,12 @@ class FirestoreRepository {
                 onUpdate(snapshot?.toObject(User::class.java))
             }
     }
-    
-    private suspend fun createUserDocument(userId: String, name: String? = null): User {
+
+    private suspend fun createUserDocument(userId: String, name: String? = null, fcmToken: String? = null): User {
         val user = User(
             id = userId,  // Stored field "id" - mirrors document ID
             name = name ?: "",
-            fcmToken = null,
+            fcmToken = fcmToken,
             currentWaitlists = emptyList()
             // docId will be auto-mapped from document ID when reading
             // createdAt will be set by server via @ServerTimestamp

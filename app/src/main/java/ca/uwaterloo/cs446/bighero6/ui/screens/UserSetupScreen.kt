@@ -31,7 +31,8 @@ fun UserSetupScreen(navController: NavController, initialName: String? = null) {
             error = null
             try {
                 val repository = FirestoreRepository()
-                repository.getOrCreateUser(userId, name)
+                val fcmToken = DeviceIdManager.getFcmToken(context)
+                repository.getOrCreateUser(userId, name, fcmToken)
                 navController.navigate(Screen.MyWaitlists.route) {
                     popUpTo(Screen.UserSetup.route) { inclusive = true }
                 }
@@ -49,7 +50,7 @@ fun UserSetupScreen(navController: NavController, initialName: String? = null) {
             createUser(initialName)
         }
     }
-    
+
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
