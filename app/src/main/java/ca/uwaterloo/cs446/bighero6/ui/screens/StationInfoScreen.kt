@@ -32,22 +32,7 @@ fun StationInfoScreen(
         viewModel.loadStation(stationId)
         hasAutoStarted = false
     }
-    
-    LaunchedEffect(stationState) {
-        val state = stationState
-        if (state is UiState.Success && !hasAutoStarted) {
-            val station = state.data
-            val userId = DeviceIdManager.getUserId(context)
-            val isInWaitlist = station.attendees.any { it.userId == userId }
-            val position = if (isInWaitlist) station.calculatePosition(userId) else 0
-            
-            if (isInWaitlist && position == 1 && station.currentSession?.userId != userId) {
-                hasAutoStarted = true
-                viewModel.checkAndStartSession(stationId, context)
-            }
-        }
-    }
-    
+
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -61,6 +46,22 @@ fun StationInfoScreen(
                 val isInWaitlist = station.attendees.any { it.userId == userId }
                 val position = if (isInWaitlist) station.calculatePosition(userId) else 0
                 val peopleInLine = station.attendees.count { it.status == "waiting" }
+                val isMySessionActive = station.currentSession?.userId == userId
+                val shouldAutoStart =
+                    isInWaitlist && position == 1 && !isMySessionActive && station.currentSession?.userId == null
+
+                LaunchedEffect(isMySessionActive) {
+                    if (isMySessionActive) {
+                        navController.navigate(Screen.SessionActive("").createRoute(stationId))
+                    }
+                }
+
+                LaunchedEffect(shouldAutoStart) {
+                    if (shouldAutoStart && !hasAutoStarted) {
+                        hasAutoStarted = true
+                        viewModel.checkAndStartSession(stationId, context)
+                    }
+                }
                 
                 Text(station.name, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 8.dp))
                 Text(
@@ -69,18 +70,25 @@ fun StationInfoScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
-                
+
                 when {
-                    isInWaitlist && position == 1 && station.currentSession?.userId != userId -> {
+                    isMySessionActive -> {
                         Text(
-                            "You're first in line!",
+                            "Resuming your session...",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                            modifier = Modifier.padding(bottom = 16.dp)
                         )
-                        Button(onClick = { viewModel.checkAndStartSession(stationId, context) }) {
-                            Text("Start Session")
-                        }
+                        CircularProgressIndicator()
+                    }
+                    shouldAutoStart -> {
+                        Text(
+                            "Starting your session...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+                        CircularProgressIndicator()
                     }
                     isInWaitlist -> {
                         Text("You're #$position in line", modifier = Modifier.padding(bottom = 8.dp))
