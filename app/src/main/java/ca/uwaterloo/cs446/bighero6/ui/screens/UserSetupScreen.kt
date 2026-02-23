@@ -28,7 +28,7 @@ fun UserSetupScreen(navController: NavController, initialName: String? = null) {
     
     val userId = remember { DeviceIdManager.getUserId(context) }
     val repository = remember { FirestoreRepository() }
-    
+
     var nameInput by remember { mutableStateOf("") }
     var user by remember { mutableStateOf<User?>(null) }
 
@@ -37,10 +37,11 @@ fun UserSetupScreen(navController: NavController, initialName: String? = null) {
         isLoading = true
         try {
             // This ensures a user document exists and syncs the name if provided during signup
-            val existingUser = repository.getOrCreateUser(userId, initialName)
+            val fcmToken = DeviceIdManager.getFcmToken(context)
+            val existingUser = repository.getOrCreateUser(userId, initialName, fcmToken)
             user = existingUser
             nameInput = existingUser.name
-            
+
             // If this was an initial setup triggered by signup, we navigate to waitlists
             if (initialName != null) {
                 navController.navigate(Screen.MyWaitlists.route) {
@@ -100,7 +101,7 @@ fun UserSetupScreen(navController: NavController, initialName: String? = null) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Profile", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(16.dp))
-                    
+
                     OutlinedTextField(
                         value = nameInput,
                         onValueChange = { nameInput = it },
@@ -108,9 +109,9 @@ fun UserSetupScreen(navController: NavController, initialName: String? = null) {
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     Text(
                         text = "User ID: $userId",
                         style = MaterialTheme.typography.labelSmall,
@@ -118,7 +119,7 @@ fun UserSetupScreen(navController: NavController, initialName: String? = null) {
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
-                    
+
                     if (isSaving) {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
                     } else {
