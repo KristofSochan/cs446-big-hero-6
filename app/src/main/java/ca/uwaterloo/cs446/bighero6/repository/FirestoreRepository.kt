@@ -214,15 +214,23 @@ class FirestoreRepository {
     }
     
     /**
-     * End session - clears currentSession so next person can start
+     * End session - clears currentSession so next person can start,
+     * and removes the station from the user's currentWaitlists.
      */
     suspend fun endSession(stationId: String): Result<Unit> {
         return try {
-            db.collection("stations")
-                .document(stationId)
-                .update("currentSession", null)
-                .await()
-            
+            db.runTransaction { transaction ->
+                val stationRef = db.collection("stations").document(stationId)
+                val currentStation = transaction.get(stationRef).toObject(Station::class.java)
+                val userId = currentStation?.currentSession?.userId
+                    ?: throw IllegalStateException("No active session to end")
+
+                transaction.update(stationRef, "currentSession", null)
+
+                val userRef = db.collection("users").document(userId)
+                transaction.update(userRef, "currentWaitlists", FieldValue.arrayRemove(stationId))
+            }.await()
+
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
