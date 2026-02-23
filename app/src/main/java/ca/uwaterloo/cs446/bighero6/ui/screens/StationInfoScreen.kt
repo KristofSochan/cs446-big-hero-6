@@ -21,6 +21,7 @@ import ca.uwaterloo.cs446.bighero6.viewmodel.StationViewModel
 fun StationInfoScreen(
     stationId: String,
     navController: NavController,
+    autoStart: Boolean = true,
     viewModel: StationViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -48,10 +49,10 @@ fun StationInfoScreen(
                 val peopleInLine = station.attendees.count { it.status == "waiting" }
                 val isMySessionActive = station.currentSession?.userId == userId
                 val shouldAutoStart =
-                    isInWaitlist && position == 1 && !isMySessionActive && station.currentSession?.userId == null
+                    autoStart && isInWaitlist && position == 1 && !isMySessionActive && station.currentSession?.userId == null
 
-                LaunchedEffect(isMySessionActive) {
-                    if (isMySessionActive) {
+                LaunchedEffect(isMySessionActive, autoStart) {
+                    if (autoStart && isMySessionActive) {
                         navController.navigate(Screen.SessionActive("").createRoute(stationId))
                     }
                 }
@@ -72,7 +73,7 @@ fun StationInfoScreen(
                 )
 
                 when {
-                    isMySessionActive -> {
+                    autoStart && isMySessionActive -> {
                         Text(
                             "Resuming your session...",
                             style = MaterialTheme.typography.bodyMedium,

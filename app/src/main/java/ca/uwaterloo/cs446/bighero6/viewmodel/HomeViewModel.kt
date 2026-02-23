@@ -17,7 +17,8 @@ data class WaitlistSummary(
     val stationId: String,
     val stationName: String,
     val position: Int,
-    val estimatedWaitTime: String
+    val estimatedWaitTime: String,
+    val isInSession: Boolean
 )
 
 /**
@@ -48,10 +49,15 @@ class HomeViewModel : ViewModel() {
     }
     
     private fun updateWaitlistSummary(station: Station, userId: String) {
-        val position = station.calculatePosition(userId)
-        val eta = if (position > 0) "${(position - 1) * 3} min" else "N/A"
+        val isInSession = station.currentSession?.userId == userId
+        val position = if (isInSession) 0 else station.calculatePosition(userId)
+        val eta = when {
+            isInSession -> "In session"
+            position > 0 -> "${(position - 1) * 3} min"
+            else -> "N/A"
+        }
         
-        val summary = WaitlistSummary(station.id, station.name, position, eta)
+        val summary = WaitlistSummary(station.id, station.name, position, eta, isInSession)
         waitlists.value = waitlists.value.filter { it.stationId != station.id } + summary
     }
     

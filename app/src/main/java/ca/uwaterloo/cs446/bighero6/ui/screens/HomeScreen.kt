@@ -3,6 +3,7 @@ package ca.uwaterloo.cs446.bighero6.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -34,7 +35,12 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = viewMode
         // Test button to simulate NFC scan
         Button(
             onClick = {
-                navController.navigate(Screen.StationInfo("").createRoute("8dK92iAsn0ALwZ1R9iT7"))
+                navController.navigate(
+                    Screen.StationInfo("").createRoute(
+                        "8dK92iAsn0ALwZ1R9iT7",
+                        autoStart = true
+                    )
+                )
             },
             modifier = Modifier.padding(bottom = 8.dp)
         ) {
@@ -59,10 +65,34 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = viewMode
         } else {
             LazyColumn {
                 items(waitlists) { waitlist ->
-                    Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Card(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
+                            .clickable {
+                                if (waitlist.isInSession) {
+                                    navController.navigate(
+                                        Screen.SessionActive("").createRoute(waitlist.stationId)
+                                    )
+                                } else {
+                                    navController.navigate(
+                                        Screen.StationInfo("").createRoute(
+                                            waitlist.stationId,
+                                            autoStart = false
+                                        )
+                                    )
+                                }
+                            }
+                    ) {
                         Column(Modifier.padding(16.dp)) {
                             Text(waitlist.stationName, style = MaterialTheme.typography.titleLarge)
-                            Text("Position: ${waitlist.position}")
+                            Text(
+                                text = if (waitlist.position > 0) {
+                                    "Position: ${waitlist.position}"
+                                } else {
+                                    "In session"
+                                }
+                            )
                             Text("ETA: ${waitlist.estimatedWaitTime}")
                             if (waitlist.position == 1) {
                                 Text(

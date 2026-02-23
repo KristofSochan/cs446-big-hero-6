@@ -12,8 +12,10 @@ import ca.uwaterloo.cs446.bighero6.ui.screens.UserSetupScreen
 sealed class Screen(val route: String) {
     object UserSetup : Screen("user_setup")
     object Home : Screen("home")
-    data class StationInfo(val stationId: String) : Screen("station/{stationId}") {
-        fun createRoute(stationId: String) = "station/$stationId"
+    data class StationInfo(val stationId: String, val autoStart: Boolean = true) :
+        Screen("station/{stationId}?autoStart={autoStart}") {
+        fun createRoute(stationId: String, autoStart: Boolean = true) =
+            "station/$stationId?autoStart=$autoStart"
     }
     data class SessionActive(val stationId: String) : Screen("session/{stationId}") {
         fun createRoute(stationId: String) = "session/$stationId"
@@ -33,15 +35,17 @@ fun NavGraph(navController: NavHostController) {
         composable(Screen.Home.route) {
             HomeScreen(navController = navController)
         }
-        
-        composable(Screen.StationInfo("").route) { backStackEntry ->
+
+        composable(Screen.StationInfo("", true).route) { backStackEntry ->
             val stationId = backStackEntry.arguments?.getString("stationId") ?: ""
+            val autoStart = backStackEntry.arguments?.getString("autoStart")?.toBoolean() ?: true
             StationInfoScreen(
                 stationId = stationId,
-                navController = navController
+                navController = navController,
+                autoStart = autoStart
             )
         }
-        
+
         composable(Screen.SessionActive("").route) { backStackEntry ->
             val stationId = backStackEntry.arguments?.getString("stationId") ?: ""
             SessionActiveScreen(

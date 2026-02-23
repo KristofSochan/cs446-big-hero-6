@@ -98,9 +98,21 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
 
             Button(
                 onClick = { viewModel.endSession(stationId) },
-                enabled = endSessionState !is SessionViewModel.EndSessionState.Loading
+                enabled = endSessionState !is SessionViewModel.EndSessionState.Loading,
+                modifier = Modifier.padding(top = 8.dp)
             ) {
                 Text(if (endSessionState is SessionViewModel.EndSessionState.Loading) "Ending…" else "End Session")
+            }
+
+            TextButton(
+                onClick = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = false }
+                    }
+                },
+                modifier = Modifier.padding(top = 16.dp)
+            ) {
+                Text("Back to Home")
             }
         }
     }
