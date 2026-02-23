@@ -47,9 +47,11 @@ fun StationInfoScreen(
                 val isInWaitlist = station.attendees.any { it.userId == userId }
                 val position = if (isInWaitlist) station.calculatePosition(userId) else 0
                 val peopleInLine = station.attendees.count { it.status == "waiting" }
+                val hasActiveSession = station.currentSession != null
                 val isMySessionActive = station.currentSession?.userId == userId
+                val isFirstInLine = isInWaitlist && position == 1
                 val shouldAutoStart =
-                    autoStart && isInWaitlist && position == 1 && !isMySessionActive && station.currentSession?.userId == null
+                    autoStart && isFirstInLine && !isMySessionActive && station.currentSession?.userId == null
 
                 LaunchedEffect(isMySessionActive, autoStart) {
                     if (autoStart && isMySessionActive) {
@@ -64,7 +66,33 @@ fun StationInfoScreen(
                     }
                 }
                 
-                Text(station.name, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 8.dp))
+                Text(
+                    station.name,
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                val statusText = when {
+                    isMySessionActive -> "You're currently using this station"
+                    isFirstInLine && !hasActiveSession ->
+                        "Station is available, tap the NFC tag to start your session"
+                    isFirstInLine && hasActiveSession ->
+                        "You will be notified when the station is ready"
+                    else -> null
+                }
+
+                statusText?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (isFirstInLine && !hasActiveSession) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
                 Text(
                     "$peopleInLine ${if (peopleInLine == 1) "person" else "people"} in line",
                     style = MaterialTheme.typography.bodyLarge,
@@ -93,11 +121,31 @@ fun StationInfoScreen(
                     }
                     isInWaitlist -> {
                         Text("You're #$position in line", modifier = Modifier.padding(bottom = 8.dp))
-                        Button(onClick = { navController.popBackStack() }) { Text("Back") }
+                        TextButton(
+                            onClick = {
+                                navController.navigate(Screen.Home.route) {
+                                    popUpTo(Screen.Home.route) { inclusive = false }
+                                }
+                            }
+                        ) {
+                            Text("Back to Home")
+                        }
                     }
                     else -> {
-                        Button(onClick = { viewModel.joinWaitlist(stationId, context) }) {
+                        Button(
+                            onClick = { viewModel.joinWaitlist(stationId, context) },
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        ) {
                             Text("Join Waitlist")
+                        }
+                        TextButton(
+                            onClick = {
+                                navController.navigate(Screen.Home.route) {
+                                    popUpTo(Screen.Home.route) { inclusive = false }
+                                }
+                            }
+                        ) {
+                            Text("Back to Home")
                         }
                     }
                 }
