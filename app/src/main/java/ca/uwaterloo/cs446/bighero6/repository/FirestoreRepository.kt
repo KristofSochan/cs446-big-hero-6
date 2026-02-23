@@ -331,7 +331,7 @@ class FirestoreRepository {
             Result.failure(e)
         }
     }
-    
+
     /**
      * Notify the current head of the queue and, if check-in enforcement is
      * enabled, start a check-in window for them.
@@ -488,6 +488,7 @@ class FirestoreRepository {
     private suspend fun createUserDocument(userId: String, name: String? = null, fcmToken: String? = null): User {
         val user = User(
             id = userId,  // Stored field "id" - mirrors document ID
+            fcmToken = fcmToken,
             name = name ?: "",
             fcmToken = fcmToken,
             currentWaitlists = emptyList()
