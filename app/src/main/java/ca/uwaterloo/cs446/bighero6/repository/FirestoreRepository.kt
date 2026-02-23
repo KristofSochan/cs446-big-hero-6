@@ -99,53 +99,55 @@ class FirestoreRepository {
     
     /**
      * Start session for user at position 1
-     * Automatically expires any existing expired session before starting
+     * - timed mode: session auto-expires after sessionDurationSeconds (Cloud Task scheduled)
+     * - manual mode: session ends only when user taps End Session (no expiresAt)
      */
     suspend fun startSession(
         stationId: String,
         userId: String,
-        sessionDurationSeconds: Int = 900
+        sessionDurationSeconds: Int = 900,
+        mode: String = "manual"
     ): Result<Unit> {
         return try {
-            val sessionDurationMs = sessionDurationSeconds * 1000L
-            val expiresAt = Timestamp(Date(System.currentTimeMillis() + sessionDurationMs))
-            
+            val isTimed = mode == "timed"
+            val expiresAt = if (isTimed) {
+                Timestamp(Date(System.currentTimeMillis() + sessionDurationSeconds * 1000L))
+            } else {
+                null
+            }
+
             // Get current station to find user entry
             val station = getStation(stationId) ?: return Result.failure(
                 IllegalStateException("Station not found")
             )
-            
+
             val userEntry = station.attendees.find { it.userId == userId }
                 ?: return Result.failure(IllegalStateException("User not in waitlist"))
-            
+
             db.runTransaction { transaction ->
                 val stationRef = db.collection("stations").document(stationId)
                 val currentStation = transaction.get(stationRef).toObject(Station::class.java)
-                
-                // Check if current session exists and is expired
+
+                // Check if current session exists and is expired (timed only)
                 val currentSession = currentStation?.currentSession
                 val now = Timestamp.now()
-                if (currentSession?.expiresAt != null && 
+                if (currentSession?.expiresAt != null &&
                     currentSession.expiresAt.seconds * 1000 < now.seconds * 1000) {
-                    // Expired session exists, clear it
                     transaction.update(stationRef, "currentSession", null)
                 } else if (currentSession != null) {
-                    // Active session exists, can't start new one
                     throw IllegalStateException("Station is currently in use")
                 }
-                
-                // Update current session
-                transaction.update(
-                    stationRef,
-                    "currentSession.userId", userId,
-                    "currentSession.startedAt", Timestamp.now(),
-                    "currentSession.expiresAt", expiresAt
+
+                val sessionMap = mutableMapOf<String, Any?>(
+                    "userId" to userId,
+                    "startedAt" to Timestamp.now()
                 )
-                
-                // Remove user from attendees array
+                sessionMap["expiresAt"] = expiresAt
+                transaction.update(stationRef, "currentSession", sessionMap)
+
                 transaction.update(stationRef, "attendees", FieldValue.arrayRemove(userEntry))
             }.await()
-            
+
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

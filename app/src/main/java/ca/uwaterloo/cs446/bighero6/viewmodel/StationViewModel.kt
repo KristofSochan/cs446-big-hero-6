@@ -50,7 +50,8 @@ class StationViewModel : ViewModel() {
             val station = repository.getStation(stationId)
             
             if (station != null && station.isAtPositionOne(userId)) {
-                val result = repository.startSession(stationId, userId, station.sessionDurationSeconds)
+                val mode = station.mode.ifEmpty { "manual" }
+                val result = repository.startSession(stationId, userId, station.sessionDurationSeconds, mode)
                 joinState.value = if (result.isSuccess) {
                     UiState.Success(Unit)
                 } else {
