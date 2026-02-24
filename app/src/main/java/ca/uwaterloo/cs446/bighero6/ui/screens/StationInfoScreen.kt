@@ -123,12 +123,12 @@ fun StationInfoScreen(
                         Text("You're #$position in line", modifier = Modifier.padding(bottom = 8.dp))
                         TextButton(
                             onClick = {
-                                navController.navigate(Screen.Home.route) {
-                                    popUpTo(Screen.Home.route) { inclusive = false }
+                                navController.navigate(Screen.MyWaitlists.route) {
+                                    popUpTo(Screen.MyWaitlists.route) { inclusive = false }
                                 }
                             }
                         ) {
-                            Text("Back to Home")
+                            Text("Back to My Waitlists")
                         }
                     }
                     else -> {
@@ -140,12 +140,12 @@ fun StationInfoScreen(
                         }
                         TextButton(
                             onClick = {
-                                navController.navigate(Screen.Home.route) {
-                                    popUpTo(Screen.Home.route) { inclusive = false }
+                                navController.navigate(Screen.MyWaitlists.route) {
+                                    popUpTo(Screen.MyWaitlists.route) { inclusive = false }
                                 }
                             }
                         ) {
-                            Text("Back to Home")
+                            Text("Back to My Waitlists")
                         }
                     }
                 }
@@ -157,7 +157,7 @@ fun StationInfoScreen(
                         if (isInWaitlist && position == 1) {
                             navController.navigate(Screen.SessionActive("").createRoute(stationId))
                         } else {
-                            navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = false } }
+                            navController.navigate(Screen.MyWaitlists.route) { popUpTo(Screen.MyWaitlists.route) { inclusive = false } }
                         }
                     }
                 }

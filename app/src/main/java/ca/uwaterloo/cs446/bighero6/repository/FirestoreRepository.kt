@@ -56,6 +56,30 @@ class FirestoreRepository {
                 onUpdate(stationWithId)
             }
     }
+
+    /**
+     * Subscribe to stations owned by a specific user
+     */
+    fun subscribeToOwnedStations(
+        creatorId: String,
+        onUpdate: (List<Station>) -> Unit
+    ): ListenerRegistration {
+
+        return db.collection("stations")
+            .whereEqualTo("creatorId", creatorId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    onUpdate(emptyList())
+                    return@addSnapshotListener
+                }
+
+                val stations = snapshot?.documents?.mapNotNull { doc ->
+                    val station = doc.toObject(Station::class.java)
+                    station?.let { it.copy(id = it.id.ifEmpty { it.docId }) }
+                } ?: emptyList()
+                onUpdate(stations)
+            }
+    }
     
     /**
      * Add user to waitlist (transaction-safe)

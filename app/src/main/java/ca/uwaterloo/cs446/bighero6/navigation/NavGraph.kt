@@ -4,14 +4,16 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import ca.uwaterloo.cs446.bighero6.ui.screens.HomeScreen
+import ca.uwaterloo.cs446.bighero6.ui.screens.MyWaitlistsScreen
+import ca.uwaterloo.cs446.bighero6.ui.screens.MyStationsScreen
 import ca.uwaterloo.cs446.bighero6.ui.screens.SessionActiveScreen
 import ca.uwaterloo.cs446.bighero6.ui.screens.StationInfoScreen
 import ca.uwaterloo.cs446.bighero6.ui.screens.UserSetupScreen
 
 sealed class Screen(val route: String) {
     object UserSetup : Screen("user_setup")
-    object Home : Screen("home")
+    object MyWaitlists : Screen("my_waitlists")
+    object MyStations : Screen("my_stations")
     data class StationInfo(val stationId: String, val autoStart: Boolean = true) :
         Screen("station/{stationId}?autoStart={autoStart}") {
         fun createRoute(stationId: String, autoStart: Boolean = true) =
@@ -32,8 +34,12 @@ fun NavGraph(navController: NavHostController) {
             UserSetupScreen(navController = navController)
         }
         
-        composable(Screen.Home.route) {
-            HomeScreen(navController = navController)
+        composable(Screen.MyWaitlists.route) {
+            MyWaitlistsScreen(navController = navController)
+        }
+
+        composable(Screen.MyStations.route) {
+            MyStationsScreen(navController = navController)
         }
 
         composable(Screen.StationInfo("", true).route) { backStackEntry ->
