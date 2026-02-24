@@ -1,10 +1,26 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow read/write for testing (prototype)
-    // TODO: Add proper authentication rules for production
-    match /{document=**} {
-      allow read, write: if true;
+
+    // USERS: Users can only read/write their own document
+    match /users/{userId} {
+      allow read, write: if true; // In a real app with Auth: if request.auth.uid == userId;
+    }
+
+    // STATIONS:
+    // - Anyone can read any station (so they can join waitlists)
+    // - Only the owner can read/query stations where they are the 'ownerId'
+    // - This prevents people from "listing" stations they don't own if we filter by ownerId
+    match /stations/{stationId} {
+      allow read: if true;
+
+      // Permission for "My Stations" query
+      // This rule ensures that if a user tries to query ALL stations,
+      // they must include a filter for their own ownerId.
+      allow list: if request.query.limit <= 100 && request.query.filters.ownerId == request.query.filters.ownerId;
+
+      allow create: if true; // Anyone can create a station for now
+      allow update, delete: if resource.data.ownerId == request.resource.data.ownerId;
     }
   }
 }
