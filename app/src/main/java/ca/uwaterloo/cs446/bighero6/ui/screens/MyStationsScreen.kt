@@ -153,6 +153,15 @@ fun MyStationsScreen(navController: NavController) {
                                             onDismissRequest = { expanded = false }
                                         ) {
                                             DropdownMenuItem(
+                                                text = {
+                                                    Text(
+                                                        "Write to NFC tag",
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                },
+                                                onClick = { expanded = false }
+                                            )
+                                            DropdownMenuItem(
                                                 text = { Text("View queue") },
                                                 onClick = { 
                                                     expanded = false
@@ -160,15 +169,6 @@ fun MyStationsScreen(navController: NavController) {
                                                         Screen.QueueManagement(station.id).createRoute(station.id)
                                                     )
                                                 }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { 
-                                                    Text(
-                                                        "Write to NFC tag", 
-                                                        fontWeight = FontWeight.Bold
-                                                    ) 
-                                                },
-                                                onClick = { expanded = false }
                                             )
                                             DropdownMenuItem(
                                                 text = { Text("Edit station") },
