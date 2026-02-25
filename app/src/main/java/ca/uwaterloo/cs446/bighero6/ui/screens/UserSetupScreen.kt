@@ -10,7 +10,6 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
-import ca.uwaterloo.cs446.bighero6.ui.UiState
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
 import kotlinx.coroutines.launch
 
@@ -33,7 +32,7 @@ fun UserSetupScreen(navController: NavController) {
             try {
                 val repository = FirestoreRepository()
                 repository.getOrCreateUser(userId)
-                navController.navigate(Screen.Home.route) {
+                navController.navigate(Screen.MyWaitlists.route) {
                     popUpTo(Screen.UserSetup.route) { inclusive = true }
                 }
             } catch (e: Exception) {

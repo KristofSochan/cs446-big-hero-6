@@ -3,27 +3,26 @@ package ca.uwaterloo.cs446.bighero6.data
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentId
 import com.google.firebase.firestore.IgnoreExtraProperties
+import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.ServerTimestamp
 
 @IgnoreExtraProperties
 data class Station(
-    @DocumentId
-    val docId: String = "",
-    val id: String = "", // same val as docId but is a standard field of the document
+    val id: String = "",
+    val ownerId: String = "",
     val name: String = "",
+    
+    @get:PropertyName("isActive")
+    @PropertyName("isActive")
     val isActive: Boolean = true,
+    
     val sessionDurationSeconds: Int = 900,
-    val mode: String = "manual", // "manual" or "timed"
-    // Waitlist data embedded
+    val mode: String = "manual",
     val attendees: List<Attendee> = emptyList(),
     val currentSession: CurrentSession? = null,
     @ServerTimestamp
-    val createdAt: Timestamp? = null  // Set by server on creation
+    val createdAt: Timestamp? = null
 ) {
-    /**
-     * Calculate position of a user in the waitlist.
-     * Position is determined by sorting attendees by joinedAt timestamp.
-     */
     fun calculatePosition(userId: String): Int {
         val waitingAttendees = attendees
             .filter { it.status == "waiting" }
