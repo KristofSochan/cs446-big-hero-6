@@ -24,6 +24,9 @@ sealed class Screen(val route: String) {
     data class SessionEditor(val stationId: String) : Screen("edit_session/{stationId}") {
         fun createRoute(stationId: String) = "edit_session/$stationId"
     }
+    data class QueueManagement(val stationId: String) : Screen("manage_queue/{stationId}") {
+        fun createRoute(stationId: String) = "manage_queue/$stationId"
+    }
 }
 
 @Composable
@@ -73,6 +76,14 @@ fun NavGraph(navController: NavHostController) {
         composable(Screen.SessionEditor("").route) { backStackEntry ->
             val stationId = backStackEntry.arguments?.getString("stationId") ?: ""
             SessionEditorScreen(
+                stationId = stationId,
+                navController = navController
+            )
+        }
+
+        composable(Screen.QueueManagement("").route) { backStackEntry ->
+            val stationId = backStackEntry.arguments?.getString("stationId") ?: ""
+            QueueManagementScreen(
                 stationId = stationId,
                 navController = navController
             )

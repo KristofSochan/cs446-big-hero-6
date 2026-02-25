@@ -1,9 +1,10 @@
 package ca.uwaterloo.cs446.bighero6.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +20,7 @@ import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import ca.uwaterloo.cs446.bighero6.ui.components.TapListScaffold
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
+import kotlinx.coroutines.launch
 
 @Composable
 fun MyStationsScreen(navController: NavController) {
@@ -26,6 +28,7 @@ fun MyStationsScreen(navController: NavController) {
     val userId = remember { DeviceIdManager.getUserId(context) }
     var stations by remember { mutableStateOf<List<Station>>(emptyList()) }
     val repository = remember { FirestoreRepository() }
+    val scope = rememberCoroutineScope()
 
     // Sort stations based on criteria:
     // 1. Active ones first
@@ -96,12 +99,10 @@ fun MyStationsScreen(navController: NavController) {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(sortedStations) { station ->
+                        var expanded by remember { mutableStateOf(false) }
+
                         Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    navController.navigate(Screen.SessionEditor(station.id).createRoute(station.id))
-                                },
+                            modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant
                             )
@@ -114,29 +115,93 @@ fun MyStationsScreen(navController: NavController) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.Top
                                 ) {
-                                    Text(
-                                        text = station.name,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    // Status Badge
-                                    val statusColor = if (station.isActive) Color(0xFF4CAF50) else MaterialTheme.colorScheme.error
-                                    Surface(
-                                        color = statusColor,
-                                        shape = MaterialTheme.shapes.extraSmall
-                                    ) {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = if (station.isActive) "ACTIVE" else "INACTIVE",
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White
+                                            text = station.name,
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.Bold
                                         )
+                                        
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        
+                                        // Status Badge
+                                        val statusColor = if (station.isActive) Color(0xFF4CAF50) else MaterialTheme.colorScheme.error
+                                        Surface(
+                                            color = statusColor,
+                                            shape = MaterialTheme.shapes.extraSmall
+                                        ) {
+                                            Text(
+                                                text = if (station.isActive) "ACTIVE" else "INACTIVE",
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+
+                                    Box {
+                                        IconButton(onClick = { expanded = true }) {
+                                            Icon(
+                                                imageVector = Icons.Default.Menu,
+                                                contentDescription = "Station options"
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = expanded,
+                                            onDismissRequest = { expanded = false }
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("View queue") },
+                                                onClick = { 
+                                                    expanded = false
+                                                    navController.navigate(
+                                                        Screen.QueueManagement(station.id).createRoute(station.id)
+                                                    )
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { 
+                                                    Text(
+                                                        "Write to NFC tag", 
+                                                        fontWeight = FontWeight.Bold
+                                                    ) 
+                                                },
+                                                onClick = { expanded = false }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Edit station") },
+                                                onClick = {
+                                                    expanded = false
+                                                    navController.navigate(
+                                                        Screen.SessionEditor(station.id).createRoute(station.id)
+                                                    )
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("View analytics") },
+                                                onClick = { expanded = false }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { 
+                                                    Text(
+                                                        "Delete station", 
+                                                        color = MaterialTheme.colorScheme.error
+                                                    ) 
+                                                },
+                                                onClick = {
+                                                    expanded = false
+                                                    scope.launch {
+                                                        repository.deleteStation(station.id)
+                                                    }
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                                 
-                                Spacer(modifier = Modifier.height(4.dp))
+                                Spacer(modifier = Modifier.height(8.dp))
                                 
                                 val waitingCount = station.attendees.count { it.status == "waiting" }
                                 Text(
@@ -151,15 +216,6 @@ fun MyStationsScreen(navController: NavController) {
                                         color = MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.Medium
                                     )
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                OutlinedButton(
-                                    onClick = { /* TODO: Implement NFC writing */ },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("Write to NFC tag")
                                 }
                             }
                         }

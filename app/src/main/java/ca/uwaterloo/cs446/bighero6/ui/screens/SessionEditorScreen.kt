@@ -8,7 +8,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -65,18 +64,6 @@ fun SessionEditorScreen(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back"
                         )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = {
-                        scope.launch {
-                            repository.deleteStation(stationId)
-                            navController.navigate(Screen.MyStations.route) {
-                                popUpTo(Screen.MyStations.route) { inclusive = true }
-                            }
-                        }
-                    }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                     }
                 }
             )
