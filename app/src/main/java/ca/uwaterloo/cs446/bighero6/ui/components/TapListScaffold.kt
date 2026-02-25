@@ -1,14 +1,14 @@
 package ca.uwaterloo.cs446.bighero6.ui.components
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
@@ -20,7 +20,6 @@ fun TapListScaffold(
     currentScreen: Screen,
     content: @Composable (PaddingValues) -> Unit
 ) {
-    var showMenu by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val userId = remember { DeviceIdManager.getUserId(context) }
 
@@ -36,56 +35,58 @@ fun TapListScaffold(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                },
-                navigationIcon = {
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Menu")
-                        }
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { 
-                                    Text(
-                                        text = "My Waitlists",
-                                        fontWeight = FontWeight.Bold
-                                    ) 
-                                },
-                                onClick = {
-                                    showMenu = false
-                                    if (currentScreen != Screen.MyWaitlists) {
-                                        navController.navigate(Screen.MyWaitlists.route)
-                                    }
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { 
-                                    Text(
-                                        text = "My Stations",
-                                        fontWeight = FontWeight.Bold
-                                    ) 
-                                },
-                                onClick = {
-                                    showMenu = false
-                                    if (currentScreen != Screen.MyStations) {
-                                        navController.navigate(Screen.MyStations.route)
-                                    }
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("User Settings") },
-                                onClick = { showMenu = false }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("About") },
-                                onClick = { showMenu = false }
-                            )
-                        }
-                    }
                 }
             )
+        },
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Person, contentDescription = "My Waitlists") },
+                    label = { Text("Waitlists") },
+                    selected = currentScreen == Screen.MyWaitlists,
+                    onClick = {
+                        if (currentScreen != Screen.MyWaitlists) {
+                            navController.navigate(Screen.MyWaitlists.route) {
+                                popUpTo(Screen.MyWaitlists.route) { inclusive = true }
+                            }
+                        }
+                    }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Build, contentDescription = "My Stations") },
+                    label = { Text("Stations") },
+                    selected = currentScreen == Screen.MyStations,
+                    onClick = {
+                        if (currentScreen != Screen.MyStations) {
+                            navController.navigate(Screen.MyStations.route) {
+                                popUpTo(Screen.MyWaitlists.route)
+                            }
+                        }
+                    }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Settings, contentDescription = "User Settings") },
+                    label = { Text("Settings") },
+                    selected = currentScreen == Screen.UserSetup,
+                    onClick = {
+                        // TODO: make logic for this
+                        // For now, just back to original screen
+                        if (currentScreen != Screen.UserSetup) {
+                            navController.navigate(Screen.UserSetup.route)
+                        }
+                    }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Info, contentDescription = "About") },
+                    label = { Text("About") },
+                    selected = currentScreen == Screen.About,
+                    onClick = {
+                        if (currentScreen != Screen.About) {
+                            navController.navigate(Screen.About.route)
+                        }
+                    }
+                )
+            }
         }
     ) { paddingValues ->
         content(paddingValues)

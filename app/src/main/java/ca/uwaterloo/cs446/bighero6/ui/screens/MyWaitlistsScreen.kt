@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -46,7 +47,7 @@ fun MyWaitlistsScreen(navController: NavController, viewModel: HomeViewModel = v
                     onClick = {
                         navController.navigate(
                             Screen.StationInfo("").createRoute(
-                                "SampleStationTemp",
+                                "07301e07-81b9-4ee2-96ae-d32c02d62977",
                                 autoStart = true
                             )
                         )
@@ -98,7 +99,11 @@ fun MyWaitlistsScreen(navController: NavController, viewModel: HomeViewModel = v
                                 }
                         ) {
                             Column(Modifier.padding(16.dp)) {
-                                Text(waitlist.stationName, style = MaterialTheme.typography.titleLarge)
+                                Text(
+                                    waitlist.stationName,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
 
                                 when {
                                     waitlist.isInSession -> {

@@ -1,5 +1,6 @@
 package ca.uwaterloo.cs446.bighero6.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -7,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -41,7 +43,7 @@ fun MyStationsScreen(navController: NavController) {
     fun CreateButton(modifier: Modifier = Modifier) {
         Button(
             onClick = {
-                // Logic to create a station would go here
+                navController.navigate(Screen.SessionCreation.route)
             },
             modifier = modifier,
             colors = ButtonDefaults.buttonColors(
@@ -95,15 +97,20 @@ fun MyStationsScreen(navController: NavController) {
                 ) {
                     items(sortedStations) { station ->
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    navController.navigate(Screen.SessionEditor(station.id).createRoute(station.id))
+                                },
                             colors = CardDefaults.cardColors(
-                                containerColor = if (station.isActive) 
-                                    MaterialTheme.colorScheme.surfaceVariant 
-                                else 
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
+                            Column(
+                                modifier = Modifier
+                                    .padding(16.dp)
+                                    .alpha(if (station.isActive) 1f else 0.6f)
+                            ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -144,6 +151,15 @@ fun MyStationsScreen(navController: NavController) {
                                         color = MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.Medium
                                     )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                OutlinedButton(
+                                    onClick = { /* TODO: Implement NFC writing */ },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Write to NFC tag")
                                 }
                             }
                         }
