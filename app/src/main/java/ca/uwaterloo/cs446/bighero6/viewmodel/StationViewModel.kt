@@ -43,6 +43,19 @@ class StationViewModel : ViewModel() {
             }
         }
     }
+
+    fun leaveWaitlist(stationId: String, context: android.content.Context) {
+        viewModelScope.launch {
+            joinState.value = UiState.Loading
+            val userId = DeviceIdManager.getUserId(context)
+            val result = repository.removeFromWaitlist(stationId, userId)
+            joinState.value = if (result.isSuccess) {
+                UiState.Success(Unit)
+            } else {
+                UiState.Error(result.exceptionOrNull()?.message ?: "Failed to leave queue")
+            }
+        }
+    }
     
     fun checkAndStartSession(stationId: String, context: android.content.Context) {
         viewModelScope.launch {

@@ -7,7 +7,6 @@ import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
@@ -29,24 +28,48 @@ data class WaitlistSummary(
  */
 class HomeViewModel : ViewModel() {
     private val repository = FirestoreRepository()
-    private val listeners = mutableListOf<ListenerRegistration>()
+    private var stationListeners = mutableMapOf<String, ListenerRegistration>()
+    private var userListener: ListenerRegistration? = null
     
     val waitlists = MutableStateFlow<List<WaitlistSummary>>(emptyList())
     
     fun subscribeToWaitlists(context: android.content.Context) {
         viewModelScope.launch {
             val userId = DeviceIdManager.getUserId(context)
-            val user = repository.getOrCreateUser(userId)
             
-            listeners.forEach { it.remove() }
-            listeners.clear()
-            
-            // Subscribe to real-time updates for each waitlist
-            user.currentWaitlists.forEach { stationId ->
-                val listener = repository.subscribeToStation(stationId) { station ->
-                    station?.let { updateWaitlistSummary(it, userId) }
+            userListener?.remove()
+            userListener = repository.subscribeToUser(userId) { user ->
+                if (user == null) {
+                    waitlists.value = emptyList()
+                    return@subscribeToUser
                 }
-                listeners.add(listener)
+
+                val currentStationIds = user.currentWaitlists.toSet()
+                
+                // Remove listeners for stations we are no longer in
+                val stationsToRemove = stationListeners.keys - currentStationIds
+                stationsToRemove.forEach { stationId ->
+                    stationListeners[stationId]?.remove()
+                    stationListeners.remove(stationId)
+                }
+                
+                // Remove summaries for stations we are no longer in
+                waitlists.value = waitlists.value.filter { it.stationId in currentStationIds }
+
+                // Add listeners for new stations
+                currentStationIds.forEach { stationId ->
+                    if (!stationListeners.containsKey(stationId)) {
+                        val listener = repository.subscribeToStation(stationId) { station ->
+                            if (station == null || userId !in station.attendees.map { it.userId } && station.currentSession?.userId != userId) {
+                                // If station doesn't exist or we're not in it anymore, remove it
+                                waitlists.value = waitlists.value.filter { it.stationId != stationId }
+                            } else {
+                                updateWaitlistSummary(station, userId)
+                            }
+                        }
+                        stationListeners[stationId] = listener
+                    }
+                }
             }
         }
     }
@@ -103,6 +126,7 @@ class HomeViewModel : ViewModel() {
     }
     
     override fun onCleared() {
-        listeners.forEach { it.remove() }
+        userListener?.remove()
+        stationListeners.values.forEach { it.remove() }
     }
 }

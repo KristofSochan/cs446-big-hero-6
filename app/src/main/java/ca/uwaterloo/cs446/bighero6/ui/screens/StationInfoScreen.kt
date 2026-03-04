@@ -28,10 +28,12 @@ fun StationInfoScreen(
     val stationState by viewModel.stationState.collectAsState()
     val joinState by viewModel.joinState.collectAsState()
     var hasAutoStarted by remember { mutableStateOf(false) }
+    var isLeaving by remember { mutableStateOf(false) }
     
     LaunchedEffect(stationId) {
         viewModel.loadStation(stationId)
         hasAutoStarted = false
+        isLeaving = false
     }
 
     Column(
@@ -121,31 +123,49 @@ fun StationInfoScreen(
                     }
                     isInWaitlist -> {
                         Text("You're #$position in line", modifier = Modifier.padding(bottom = 8.dp))
+                        
+                        Button(
+                            onClick = { 
+                                isLeaving = true
+                                viewModel.leaveWaitlist(stationId, context) 
+                            },
+                            modifier = Modifier.padding(bottom = 8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        ) {
+                            Text("Leave Queue")
+                        }
+
                         TextButton(
                             onClick = {
-                                navController.navigate(Screen.Home.route) {
-                                    popUpTo(Screen.Home.route) { inclusive = false }
+                                navController.navigate(Screen.MyWaitlists.route) {
+                                    popUpTo(Screen.MyWaitlists.route) { inclusive = false }
                                 }
                             }
                         ) {
-                            Text("Back to Home")
+                            Text("Back to My Waitlists")
                         }
                     }
                     else -> {
                         Button(
-                            onClick = { viewModel.joinWaitlist(stationId, context) },
+                            onClick = { 
+                                isLeaving = false
+                                viewModel.joinWaitlist(stationId, context) 
+                            },
                             modifier = Modifier.padding(bottom = 8.dp)
                         ) {
                             Text("Join Waitlist")
                         }
                         TextButton(
                             onClick = {
-                                navController.navigate(Screen.Home.route) {
-                                    popUpTo(Screen.Home.route) { inclusive = false }
+                                navController.navigate(Screen.MyWaitlists.route) {
+                                    popUpTo(Screen.MyWaitlists.route) { inclusive = false }
                                 }
                             }
                         ) {
-                            Text("Back to Home")
+                            Text("Back to My Waitlists")
                         }
                     }
                 }
@@ -154,10 +174,16 @@ fun StationInfoScreen(
                 LaunchedEffect(joinState) {
                     val currentJoinState = joinState
                     if (currentJoinState is UiState.Success) {
-                        if (isInWaitlist && position == 1) {
+                        if (isLeaving) {
+                            navController.navigate(Screen.MyWaitlists.route) {
+                                popUpTo(Screen.MyWaitlists.route) { inclusive = false }
+                            }
+                        } else if (isInWaitlist && position == 1) {
                             navController.navigate(Screen.SessionActive("").createRoute(stationId))
                         } else {
-                            navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = false } }
+                            navController.navigate(Screen.MyWaitlists.route) { 
+                                popUpTo(Screen.MyWaitlists.route) { inclusive = false } 
+                            }
                         }
                     }
                 }

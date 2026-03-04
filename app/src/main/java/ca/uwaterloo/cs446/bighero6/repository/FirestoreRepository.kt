@@ -9,6 +9,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.tasks.await
 import java.util.Date
+import java.util.UUID
 
 /**
  * Handles all Firestore database operations
@@ -16,7 +17,50 @@ import java.util.Date
  */
 class FirestoreRepository {
     private val db = FirebaseFirestore.getInstance()
-    
+
+    /**
+     * Create or update a station
+     */
+    suspend fun setStation(station: Station): Result<String> {
+        return try {
+            val stationId = if (station.id.isEmpty()) {
+                UUID.randomUUID().toString()
+            } else {
+                station.id
+            }
+
+            // Populate createdAt if it's null (new station)
+            val stationToSave = station.copy(
+                id = stationId,
+                createdAt = station.createdAt ?: Timestamp.now()
+            )
+            
+            db.collection("stations")
+                .document(stationId)
+                .set(stationToSave)
+                .await()
+            
+            Result.success(stationId)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Delete a station
+     */
+    suspend fun deleteStation(stationId: String): Result<Unit> {
+        return try {
+            db.collection("stations")
+                .document(stationId)
+                .delete()
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     /**
      * Get station (includes waitlist data)
      */
@@ -28,8 +72,8 @@ class FirestoreRepository {
                 .await()
             
             val station = doc.toObject(Station::class.java)
-            // Ensure id field is set (if not already stored, use docId which is auto-populated from document ID)
-            station?.let { it.copy(id = it.id.ifEmpty { it.docId }) }
+            // Ensure id field is set from document ID if empty
+            station?.let { it.copy(id = it.id.ifEmpty { doc.id }) }
         } catch (e: Exception) {
             null
         }
@@ -51,9 +95,33 @@ class FirestoreRepository {
                 }
                 
                 val station = snapshot?.toObject(Station::class.java)
-                // Ensure id field is set (if not already stored, use docId which is auto-populated from document ID)
-                val stationWithId = station?.let { it.copy(id = it.id.ifEmpty { it.docId }) }
+                // Ensure id field is set from snapshot ID if empty
+                val stationWithId = station?.let { it.copy(id = it.id.ifEmpty { snapshot.id }) }
                 onUpdate(stationWithId)
+            }
+    }
+
+    /**
+     * Subscribe to stations owned by a specific user
+     */
+    fun subscribeToOwnedStations(
+        ownerId: String,
+        onUpdate: (List<Station>) -> Unit
+    ): ListenerRegistration {
+
+        return db.collection("stations")
+            .whereEqualTo("ownerId", ownerId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    onUpdate(emptyList())
+                    return@addSnapshotListener
+                }
+
+                val stations = snapshot?.documents?.mapNotNull { doc ->
+                    val station = doc.toObject(Station::class.java)
+                    station?.let { it.copy(id = it.id.ifEmpty { doc.id }) }
+                } ?: emptyList()
+                onUpdate(stations)
             }
     }
     
@@ -79,6 +147,98 @@ class FirestoreRepository {
                 transaction.update(userRef, "currentWaitlists", FieldValue.arrayUnion(stationId))
             }.await()
             
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Remove user from waitlist (transaction-safe)
+     */
+    suspend fun removeFromWaitlist(stationId: String, userId: String): Result<Unit> {
+        return try {
+            db.runTransaction { transaction ->
+                val stationRef = db.collection("stations").document(stationId)
+                val stationDoc = transaction.get(stationRef)
+                val station = stationDoc.toObject(Station::class.java)
+                
+                val attendeeToRemove = station?.attendees?.find { it.userId == userId }
+                
+                if (attendeeToRemove != null) {
+                    // Remove from attendees array
+                    transaction.update(stationRef, "attendees", FieldValue.arrayRemove(attendeeToRemove))
+                    
+                    // Update user's waitlists
+                    val userRef = db.collection("users").document(userId)
+                    transaction.update(userRef, "currentWaitlists", FieldValue.arrayRemove(stationId))
+                }
+            }.await()
+            
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Move attendee to the front of the queue by updating their joinedAt timestamp
+     */
+    suspend fun moveAttendeeToFront(stationId: String, userId: String): Result<Unit> {
+        return try {
+            db.runTransaction { transaction ->
+                val stationRef = db.collection("stations").document(stationId)
+                val station = transaction.get(stationRef).toObject(Station::class.java)
+                    ?: throw IllegalStateException("Station not found")
+                
+                val attendees = station.attendees.toMutableList()
+                val attendeeIndex = attendees.indexOfFirst { it.userId == userId }
+                if (attendeeIndex == -1) throw IllegalStateException("User not in waitlist")
+                
+                val firstAttendee = attendees.minByOrNull { it.joinedAt }
+                val newTimestamp = if (firstAttendee != null) {
+                    Timestamp(Date(firstAttendee.joinedAt.toDate().time - 1000))
+                } else {
+                    Timestamp.now()
+                }
+                
+                val updatedAttendee = attendees[attendeeIndex].copy(joinedAt = newTimestamp)
+                attendees[attendeeIndex] = updatedAttendee
+                
+                transaction.update(stationRef, "attendees", attendees)
+            }.await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Move attendee to the back of the queue by updating their joinedAt timestamp
+     */
+    suspend fun moveAttendeeToBack(stationId: String, userId: String): Result<Unit> {
+        return try {
+            db.runTransaction { transaction ->
+                val stationRef = db.collection("stations").document(stationId)
+                val station = transaction.get(stationRef).toObject(Station::class.java)
+                    ?: throw IllegalStateException("Station not found")
+                
+                val attendees = station.attendees.toMutableList()
+                val attendeeIndex = attendees.indexOfFirst { it.userId == userId }
+                if (attendeeIndex == -1) throw IllegalStateException("User not in waitlist")
+                
+                val lastAttendee = attendees.maxByOrNull { it.joinedAt }
+                val newTimestamp = if (lastAttendee != null) {
+                    Timestamp(Date(lastAttendee.joinedAt.toDate().time + 1000))
+                } else {
+                    Timestamp.now()
+                }
+                
+                val updatedAttendee = attendees[attendeeIndex].copy(joinedAt = newTimestamp)
+                attendees[attendeeIndex] = updatedAttendee
+                
+                transaction.update(stationRef, "attendees", attendees)
+            }.await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -173,6 +333,21 @@ class FirestoreRepository {
             // Fallback: create user document
             createUserDocument(userId)
         }
+    }
+
+    /**
+     * Subscribe to user document updates
+     */
+    fun subscribeToUser(userId: String, onUpdate: (User?) -> Unit): ListenerRegistration {
+        return db.collection("users")
+            .document(userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    onUpdate(null)
+                    return@addSnapshotListener
+                }
+                onUpdate(snapshot?.toObject(User::class.java))
+            }
     }
     
     private suspend fun createUserDocument(userId: String): User {

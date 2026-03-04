@@ -39,16 +39,16 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
     LaunchedEffect(isExpired) {
         if (isExpired) {
             kotlinx.coroutines.delay(2000)
-            navController.navigate(Screen.Home.route) {
-                popUpTo(Screen.Home.route) { inclusive = false }
+            navController.navigate(Screen.MyWaitlists.route) {
+                popUpTo(Screen.MyWaitlists.route) { inclusive = false }
             }
         }
     }
 
     LaunchedEffect(endSessionState) {
         if (endSessionState is SessionViewModel.EndSessionState.Success) {
-            navController.navigate(Screen.Home.route) {
-                popUpTo(Screen.Home.route) { inclusive = false }
+            navController.navigate(Screen.MyWaitlists.route) {
+                popUpTo(Screen.MyWaitlists.route) { inclusive = false }
             }
         }
     }
@@ -60,7 +60,7 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
     ) {
         if (isExpired) {
             Text("Session Ended", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 8.dp))
-            Text("Returning to home...", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Returning to My Waitlists...", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             Text("Session Active", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 8.dp))
 
@@ -106,13 +106,13 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
 
             TextButton(
                 onClick = {
-                    navController.navigate(Screen.Home.route) {
-                        popUpTo(Screen.Home.route) { inclusive = false }
+                    navController.navigate(Screen.MyWaitlists.route) {
+                        popUpTo(Screen.MyWaitlists.route) { inclusive = false }
                     }
                 },
                 modifier = Modifier.padding(top = 16.dp)
             ) {
-                Text("Back to Home")
+                Text("Back to My Waitlists")
             }
         }
     }
