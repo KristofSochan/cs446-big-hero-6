@@ -53,7 +53,7 @@ fun SessionCreationScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = {
-                            navController.navigate(Screen.MyStations.route)
+                            navController.popBackStack()
                         }
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -26,11 +28,15 @@ fun QueueManagementScreen(
     var station by remember { mutableStateOf<Station?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     val repository = remember { FirestoreRepository() }
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(stationId) {
-        repository.subscribeToStation(stationId) { updatedStation ->
+    DisposableEffect(stationId) {
+        val registration = repository.subscribeToStation(stationId) { updatedStation ->
             station = updatedStation
             isLoading = false
+        }
+        onDispose {
+            registration.remove()
         }
     }
 
@@ -94,7 +100,7 @@ fun QueueManagementScreen(
                     // Current Session Section
                     currentSession?.let { session ->
                         Text(
-                            text = "Currently Using",
+                            text = "Now Serving",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(bottom = 8.dp)
@@ -116,7 +122,7 @@ fun QueueManagementScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = "${session.userId?.take(8) ?: "Unknown"}...",
                                         style = MaterialTheme.typography.titleMedium,
@@ -131,16 +137,39 @@ fun QueueManagementScreen(
                                     }
                                 }
                                 
-                                Surface(
-                                    color = MaterialTheme.colorScheme.primary,
-                                    shape = MaterialTheme.shapes.extraSmall
-                                ) {
-                                    Text(
-                                        text = "IN USE",
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimary
-                                    )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primary,
+                                        shape = MaterialTheme.shapes.extraSmall
+                                    ) {
+                                        Text(
+                                            text = "IN USE",
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    }
+                                    
+                                    var sessionMenuExpanded by remember { mutableStateOf(false) }
+                                    Box {
+                                        IconButton(onClick = { sessionMenuExpanded = true }) {
+                                            Icon(Icons.Default.MoreVert, contentDescription = "Options")
+                                        }
+                                        DropdownMenu(
+                                            expanded = sessionMenuExpanded,
+                                            onDismissRequest = { sessionMenuExpanded = false }
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("End session") },
+                                                onClick = {
+                                                    sessionMenuExpanded = false
+                                                    scope.launch {
+                                                        repository.endSession(stationId)
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -178,7 +207,7 @@ fun QueueManagementScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column {
+                                        Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = "${index + 1}. ${attendee.userId.take(8)}...",
                                                 style = MaterialTheme.typography.titleMedium,
@@ -191,18 +220,64 @@ fun QueueManagementScreen(
                                             )
                                         }
                                         
-                                        Surface(
-                                            color = if (attendee.status == "waiting") 
-                                                MaterialTheme.colorScheme.secondaryContainer 
-                                            else 
-                                                MaterialTheme.colorScheme.primaryContainer,
-                                            shape = MaterialTheme.shapes.extraSmall
-                                        ) {
-                                            Text(
-                                                text = attendee.status.uppercase(),
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                style = MaterialTheme.typography.labelSmall
-                                            )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Surface(
+                                                color = if (attendee.status == "waiting") 
+                                                    MaterialTheme.colorScheme.secondaryContainer 
+                                                else 
+                                                    MaterialTheme.colorScheme.primaryContainer,
+                                                shape = MaterialTheme.shapes.extraSmall
+                                            ) {
+                                                Text(
+                                                    text = attendee.status.uppercase(),
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    style = MaterialTheme.typography.labelSmall
+                                                )
+                                            }
+
+                                            var attendeeMenuExpanded by remember { mutableStateOf(false) }
+                                            Box {
+                                                IconButton(onClick = { attendeeMenuExpanded = true }) {
+                                                    Icon(Icons.Default.MoreVert, contentDescription = "Options")
+                                                }
+                                                DropdownMenu(
+                                                    expanded = attendeeMenuExpanded,
+                                                    onDismissRequest = { attendeeMenuExpanded = false }
+                                                ) {
+                                                    DropdownMenuItem(
+                                                        text = { Text("Bring to front of queue") },
+                                                        onClick = {
+                                                            attendeeMenuExpanded = false
+                                                            scope.launch {
+                                                                repository.moveAttendeeToFront(stationId, attendee.userId)
+                                                            }
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("Bring to back of queue") },
+                                                        onClick = {
+                                                            attendeeMenuExpanded = false
+                                                            scope.launch {
+                                                                repository.moveAttendeeToBack(stationId, attendee.userId)
+                                                            }
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { 
+                                                            Text(
+                                                                "Remove from queue", 
+                                                                color = MaterialTheme.colorScheme.error
+                                                            ) 
+                                                        },
+                                                        onClick = {
+                                                            attendeeMenuExpanded = false
+                                                            scope.launch {
+                                                                repository.removeFromWaitlist(stationId, attendee.userId)
+                                                            }
+                                                        }
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }

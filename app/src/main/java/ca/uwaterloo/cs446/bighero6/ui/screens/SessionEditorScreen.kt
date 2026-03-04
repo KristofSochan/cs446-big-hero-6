@@ -17,8 +17,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import ca.uwaterloo.cs446.bighero6.data.Station
-import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import kotlinx.coroutines.launch
 
@@ -50,6 +48,8 @@ fun SessionEditorScreen(
             mode = if (station.mode == "timed") EditorStationMode.Timed else EditorStationMode.Manual
             state = if (station.isActive) EditorStationState.Active else EditorStationState.Inactive
             durationMinutes = (station.sessionDurationSeconds / 60).toString()
+            enforceCheckinLimit = station.enforceCheckinLimit
+            checkinWindowMinutes = station.checkinWindowMinutes.toString()
             isLoading = false
         }
     }
@@ -204,7 +204,9 @@ fun SessionEditorScreen(
                                     name = stationName,
                                     mode = mode.toString().lowercase().replace("editor", ""),
                                     isActive = state == EditorStationState.Active,
-                                    sessionDurationSeconds = (durationMinutes.toIntOrNull() ?: 0) * 60
+                                    sessionDurationSeconds = (durationMinutes.toIntOrNull() ?: 0) * 60,
+                                    enforceCheckinLimit = enforceCheckinLimit,
+                                    checkinWindowMinutes = checkinWindowMinutes.toIntOrNull() ?: 15
                                 )
                                 repository.setStation(updatedStation)
                             }
@@ -215,7 +217,7 @@ fun SessionEditorScreen(
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
                     enabled = stationName.isNotBlank() &&
-                            (mode != EditorStationMode.Timed || durationMinutes.toIntOrNull() != null)
+                            (mode != EditorStationMode.Timed || (durationMinutes.toIntOrNull()?.let { it > 0 } == true))
                 ) {
                     Icon(Icons.Default.Done, contentDescription = null)
                     Spacer(Modifier.width(8.dp))

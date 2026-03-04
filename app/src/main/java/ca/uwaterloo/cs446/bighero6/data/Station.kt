@@ -1,7 +1,6 @@
 package ca.uwaterloo.cs446.bighero6.data
 
 import com.google.firebase.Timestamp
-import com.google.firebase.firestore.DocumentId
 import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.ServerTimestamp
@@ -18,6 +17,8 @@ data class Station(
     
     val sessionDurationSeconds: Int = 900,
     val mode: String = "manual",
+    val enforceCheckinLimit: Boolean = false,
+    val checkinWindowMinutes: Int = 15,
     val attendees: List<Attendee> = emptyList(),
     val currentSession: CurrentSession? = null,
     @ServerTimestamp

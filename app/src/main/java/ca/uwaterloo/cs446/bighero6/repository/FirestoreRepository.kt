@@ -180,6 +180,70 @@ class FirestoreRepository {
             Result.failure(e)
         }
     }
+
+    /**
+     * Move attendee to the front of the queue by updating their joinedAt timestamp
+     */
+    suspend fun moveAttendeeToFront(stationId: String, userId: String): Result<Unit> {
+        return try {
+            db.runTransaction { transaction ->
+                val stationRef = db.collection("stations").document(stationId)
+                val station = transaction.get(stationRef).toObject(Station::class.java)
+                    ?: throw IllegalStateException("Station not found")
+                
+                val attendees = station.attendees.toMutableList()
+                val attendeeIndex = attendees.indexOfFirst { it.userId == userId }
+                if (attendeeIndex == -1) throw IllegalStateException("User not in waitlist")
+                
+                val firstAttendee = attendees.minByOrNull { it.joinedAt }
+                val newTimestamp = if (firstAttendee != null) {
+                    Timestamp(Date(firstAttendee.joinedAt.toDate().time - 1000))
+                } else {
+                    Timestamp.now()
+                }
+                
+                val updatedAttendee = attendees[attendeeIndex].copy(joinedAt = newTimestamp)
+                attendees[attendeeIndex] = updatedAttendee
+                
+                transaction.update(stationRef, "attendees", attendees)
+            }.await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Move attendee to the back of the queue by updating their joinedAt timestamp
+     */
+    suspend fun moveAttendeeToBack(stationId: String, userId: String): Result<Unit> {
+        return try {
+            db.runTransaction { transaction ->
+                val stationRef = db.collection("stations").document(stationId)
+                val station = transaction.get(stationRef).toObject(Station::class.java)
+                    ?: throw IllegalStateException("Station not found")
+                
+                val attendees = station.attendees.toMutableList()
+                val attendeeIndex = attendees.indexOfFirst { it.userId == userId }
+                if (attendeeIndex == -1) throw IllegalStateException("User not in waitlist")
+                
+                val lastAttendee = attendees.maxByOrNull { it.joinedAt }
+                val newTimestamp = if (lastAttendee != null) {
+                    Timestamp(Date(lastAttendee.joinedAt.toDate().time + 1000))
+                } else {
+                    Timestamp.now()
+                }
+                
+                val updatedAttendee = attendees[attendeeIndex].copy(joinedAt = newTimestamp)
+                attendees[attendeeIndex] = updatedAttendee
+                
+                transaction.update(stationRef, "attendees", attendees)
+            }.await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
     
     /**
      * Check if user is already in waitlist
@@ -269,6 +333,21 @@ class FirestoreRepository {
             // Fallback: create user document
             createUserDocument(userId)
         }
+    }
+
+    /**
+     * Subscribe to user document updates
+     */
+    fun subscribeToUser(userId: String, onUpdate: (User?) -> Unit): ListenerRegistration {
+        return db.collection("users")
+            .document(userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    onUpdate(null)
+                    return@addSnapshotListener
+                }
+                onUpdate(snapshot?.toObject(User::class.java))
+            }
     }
     
     private suspend fun createUserDocument(userId: String): User {

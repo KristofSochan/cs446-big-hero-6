@@ -47,7 +47,7 @@ fun TapListScaffold(
                     onClick = {
                         if (currentScreen != Screen.MyWaitlists) {
                             navController.navigate(Screen.MyWaitlists.route) {
-                                popUpTo(Screen.MyWaitlists.route) { inclusive = true }
+                                popUpTo(Screen.MyWaitlists.route) { inclusive = false }
                             }
                         }
                     }
