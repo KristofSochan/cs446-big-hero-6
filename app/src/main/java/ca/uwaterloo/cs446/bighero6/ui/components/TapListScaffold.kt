@@ -8,10 +8,11 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavController
+import ca.uwaterloo.cs446.bighero6.data.User
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
-import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
+import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
+import com.google.firebase.auth.FirebaseAuth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -20,8 +21,16 @@ fun TapListScaffold(
     currentScreen: Screen,
     content: @Composable (PaddingValues) -> Unit
 ) {
-    val context = LocalContext.current
-    val userId = remember { DeviceIdManager.getUserId(context) }
+    val auth = FirebaseAuth.getInstance()
+    val repository = remember { FirestoreRepository() }
+    val userId = auth.currentUser?.uid
+    var user by remember { mutableStateOf<User?>(null) }
+
+    LaunchedEffect(userId) {
+        if (userId != null) {
+            user = repository.getUser(userId)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -29,11 +38,13 @@ fun TapListScaffold(
                 title = {
                     Column {
                         Text("TapList")
-                        Text(
-                            text = "User ID: $userId",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        if (user != null) {
+                            Text(
+                                text = user?.displayName ?: "No name set",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             )
@@ -47,7 +58,7 @@ fun TapListScaffold(
                     onClick = {
                         if (currentScreen != Screen.MyWaitlists) {
                             navController.navigate(Screen.MyWaitlists.route) {
-                                popUpTo(Screen.MyWaitlists.route) { inclusive = false }
+                                popUpTo(Screen.MyWaitlists.route)
                             }
                         }
                     }
@@ -65,14 +76,12 @@ fun TapListScaffold(
                     }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "User Settings") },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
                     label = { Text("Settings") },
-                    selected = currentScreen == Screen.UserSetup,
+                    selected = currentScreen == Screen.Settings,
                     onClick = {
-                        // TODO: make logic for this
-                        // For now, just back to original screen
-                        if (currentScreen != Screen.UserSetup) {
-                            navController.navigate(Screen.UserSetup.route)
+                        if (currentScreen != Screen.Settings) {
+                            navController.navigate(Screen.Settings.route)
                         }
                     }
                 )

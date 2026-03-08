@@ -14,14 +14,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
-import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 
 private enum class StationMode { Manual, Timed }
@@ -41,8 +40,8 @@ fun SessionCreationScreen(
     
     val repository = remember { FirestoreRepository() }
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    val userId = remember { DeviceIdManager.getUserId(context) }
+    val auth = FirebaseAuth.getInstance()
+    val userId = auth.currentUser?.uid ?: ""
     
     val scrollState = rememberScrollState()
 

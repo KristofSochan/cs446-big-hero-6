@@ -5,14 +5,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.ui.UiState
-import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
 import ca.uwaterloo.cs446.bighero6.viewmodel.StationViewModel
+import com.google.firebase.auth.FirebaseAuth
 
 /**
  * Shows station info and handles joining waitlist / starting session
@@ -24,11 +23,11 @@ fun StationInfoScreen(
     autoStart: Boolean = true,
     viewModel: StationViewModel = viewModel()
 ) {
-    val context = LocalContext.current
     val stationState by viewModel.stationState.collectAsState()
     val joinState by viewModel.joinState.collectAsState()
     var hasAutoStarted by remember { mutableStateOf(false) }
     var isLeaving by remember { mutableStateOf(false) }
+    val auth = FirebaseAuth.getInstance()
     
     LaunchedEffect(stationId) {
         viewModel.loadStation(stationId)
@@ -45,7 +44,7 @@ fun StationInfoScreen(
             is UiState.Loading -> CircularProgressIndicator()
             is UiState.Success -> {
                 val station = state.data
-                val userId = DeviceIdManager.getUserId(context)
+                val userId = auth.currentUser?.uid ?: ""
                 val isInWaitlist = station.attendees.any { it.userId == userId }
                 val position = if (isInWaitlist) station.calculatePosition(userId) else 0
                 val peopleInLine = station.attendees.count { it.status == "waiting" }
@@ -64,7 +63,7 @@ fun StationInfoScreen(
                 LaunchedEffect(shouldAutoStart) {
                     if (shouldAutoStart && !hasAutoStarted) {
                         hasAutoStarted = true
-                        viewModel.checkAndStartSession(stationId, context)
+                        viewModel.checkAndStartSession(stationId)
                     }
                 }
                 
@@ -127,7 +126,7 @@ fun StationInfoScreen(
                         Button(
                             onClick = { 
                                 isLeaving = true
-                                viewModel.leaveWaitlist(stationId, context) 
+                                viewModel.leaveWaitlist(stationId) 
                             },
                             modifier = Modifier.padding(bottom = 8.dp),
                             colors = ButtonDefaults.buttonColors(
@@ -141,7 +140,7 @@ fun StationInfoScreen(
                         TextButton(
                             onClick = {
                                 navController.navigate(Screen.MyWaitlists.route) {
-                                    popUpTo(Screen.MyWaitlists.route) { inclusive = false }
+                                    popUpTo(Screen.MyWaitlists.route)
                                 }
                             }
                         ) {
@@ -152,7 +151,7 @@ fun StationInfoScreen(
                         Button(
                             onClick = { 
                                 isLeaving = false
-                                viewModel.joinWaitlist(stationId, context) 
+                                viewModel.joinWaitlist(stationId) 
                             },
                             modifier = Modifier.padding(bottom = 8.dp)
                         ) {
@@ -161,7 +160,7 @@ fun StationInfoScreen(
                         TextButton(
                             onClick = {
                                 navController.navigate(Screen.MyWaitlists.route) {
-                                    popUpTo(Screen.MyWaitlists.route) { inclusive = false }
+                                    popUpTo(Screen.MyWaitlists.route)
                                 }
                             }
                         ) {
@@ -176,13 +175,13 @@ fun StationInfoScreen(
                     if (currentJoinState is UiState.Success) {
                         if (isLeaving) {
                             navController.navigate(Screen.MyWaitlists.route) {
-                                popUpTo(Screen.MyWaitlists.route) { inclusive = false }
+                                popUpTo(Screen.MyWaitlists.route)
                             }
                         } else if (isInWaitlist && position == 1) {
                             navController.navigate(Screen.SessionActive("").createRoute(stationId))
                         } else {
                             navController.navigate(Screen.MyWaitlists.route) { 
-                                popUpTo(Screen.MyWaitlists.route) { inclusive = false } 
+                                popUpTo(Screen.MyWaitlists.route)
                             }
                         }
                     }

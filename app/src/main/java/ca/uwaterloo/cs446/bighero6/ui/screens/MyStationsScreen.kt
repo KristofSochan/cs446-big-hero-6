@@ -11,7 +11,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -19,13 +18,13 @@ import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import ca.uwaterloo.cs446.bighero6.ui.components.TapListScaffold
-import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 
 @Composable
 fun MyStationsScreen(navController: NavController) {
-    val context = LocalContext.current
-    val userId = remember { DeviceIdManager.getUserId(context) }
+    val auth = FirebaseAuth.getInstance()
+    val userId = auth.currentUser?.uid ?: ""
     var stations by remember { mutableStateOf<List<Station>>(emptyList()) }
     val repository = remember { FirestoreRepository() }
     val scope = rememberCoroutineScope()
@@ -58,8 +57,10 @@ fun MyStationsScreen(navController: NavController) {
     }
 
     LaunchedEffect(userId) {
-        val listener = repository.subscribeToOwnedStations(userId) { updatedStations ->
-            stations = updatedStations
+        if (userId.isNotEmpty()) {
+            repository.subscribeToOwnedStations(userId) { updatedStations ->
+                stations = updatedStations
+            }
         }
     }
 
@@ -80,7 +81,7 @@ fun MyStationsScreen(navController: NavController) {
             )
 
             if (stations.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("No stations found", fontWeight = FontWeight.Bold)
                         Text(
@@ -95,7 +96,7 @@ fun MyStationsScreen(navController: NavController) {
                 CreateButton(modifier = Modifier.padding(bottom = 16.dp))
 
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(sortedStations) { station ->

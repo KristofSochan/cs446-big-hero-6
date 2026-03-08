@@ -317,7 +317,7 @@ class FirestoreRepository {
     /**
      * Get or create user document
      */
-    suspend fun getOrCreateUser(userId: String): User {
+    suspend fun getOrCreateUser(userId: String, displayName: String = ""): User {
         return try {
             val userDoc = db.collection("users")
                 .document(userId)
@@ -325,13 +325,18 @@ class FirestoreRepository {
                 .await()
             
             if (userDoc.exists()) {
-                userDoc.toObject(User::class.java) ?: createUserDocument(userId)
+                val existingUser = userDoc.toObject(User::class.java)
+                if (existingUser != null) {
+                    existingUser
+                } else {
+                    createUserDocument(userId, displayName)
+                }
             } else {
-                createUserDocument(userId)
+                createUserDocument(userId, displayName)
             }
         } catch (e: Exception) {
             // Fallback: create user document
-            createUserDocument(userId)
+            createUserDocument(userId, displayName)
         }
     }
 
@@ -349,10 +354,44 @@ class FirestoreRepository {
                 onUpdate(snapshot?.toObject(User::class.java))
             }
     }
+
+    /**
+     * Get a user by ID
+     */
+    suspend fun getUser(userId: String): User? {
+        return try {
+            db.collection("users")
+                .document(userId)
+                .get()
+                .await()
+                .toObject(User::class.java)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Get multiple users by ID
+     */
+    suspend fun getUsers(userIds: List<String>): List<User> {
+        if (userIds.isEmpty()) return emptyList()
+        return try {
+            // Firestore 'in' query has a limit of 10 items. For simplicity, we assume small batches or just fetch individually if needed.
+            // For a production app, we would chunk this.
+            db.collection("users")
+                .whereIn("id", userIds.take(10))
+                .get()
+                .await()
+                .toObjectList(User::class.java)
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
     
-    private suspend fun createUserDocument(userId: String): User {
+    private suspend fun createUserDocument(userId: String, displayName: String = ""): User {
         val user = User(
             id = userId,  // Stored field "id" - mirrors document ID
+            displayName = displayName,
             fcmToken = null,
             currentWaitlists = emptyList()
             // docId will be auto-mapped from document ID when reading
@@ -370,6 +409,18 @@ class FirestoreRepository {
             .get()
             .await()
             .toObject(User::class.java) ?: user
+    }
+
+    suspend fun updateDisplayName(userId: String, displayName: String): Result<Unit> {
+        return try {
+            db.collection("users")
+                .document(userId)
+                .update("displayName", displayName)
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
     
     /**
@@ -411,4 +462,9 @@ class FirestoreRepository {
             Result.failure(e)
         }
     }
+}
+
+// Helper extension for list conversion
+fun <T> com.google.firebase.firestore.QuerySnapshot.toObjectList(clazz: Class<T>): List<T> {
+    return documents.mapNotNull { it.toObject(clazz) }
 }
