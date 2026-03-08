@@ -4,15 +4,18 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.ui.screens.*
 
 sealed class Screen(val route: String) {
+    object Login : Screen("login")
+    object Register : Screen("register")
     object UserSetup : Screen("user_setup")
     object MyWaitlists : Screen("my_waitlists")
     object MyStations : Screen("my_stations")
     object SessionCreation : Screen("session_creation")
     object About : Screen("about")
+    object Settings : Screen("settings")
+    
     data class StationInfo(val stationId: String, val autoStart: Boolean = true) :
         Screen("station/{stationId}?autoStart={autoStart}") {
         fun createRoute(stationId: String, autoStart: Boolean = true) =
@@ -33,8 +36,16 @@ sealed class Screen(val route: String) {
 fun NavGraph(navController: NavHostController) {
     NavHost(
         navController = navController,
-        startDestination = Screen.UserSetup.route
+        startDestination = Screen.Login.route
     ) {
+        composable(Screen.Login.route) {
+            LoginScreen(navController = navController)
+        }
+        
+        composable(Screen.Register.route) {
+            RegisterScreen(navController = navController)
+        }
+
         composable(Screen.UserSetup.route) {
             UserSetupScreen(navController = navController)
         }
@@ -53,6 +64,10 @@ fun NavGraph(navController: NavHostController) {
         
         composable(Screen.About.route) {
             AboutScreen(navController = navController)
+        }
+
+        composable(Screen.Settings.route) {
+            SettingsScreen(navController = navController)
         }
 
         composable(Screen.StationInfo("", true).route) { backStackEntry ->

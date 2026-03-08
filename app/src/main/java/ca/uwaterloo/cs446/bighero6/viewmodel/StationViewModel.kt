@@ -5,9 +5,8 @@ import androidx.lifecycle.viewModelScope
 import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import ca.uwaterloo.cs446.bighero6.ui.UiState
-import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -15,6 +14,7 @@ import kotlinx.coroutines.launch
  */
 class StationViewModel : ViewModel() {
     private val repository = FirestoreRepository()
+    private val auth = FirebaseAuth.getInstance()
     
     val stationState = MutableStateFlow<UiState<Station>>(UiState.Loading)
     val joinState = MutableStateFlow<UiState<Unit>>(UiState.Idle)
@@ -31,10 +31,10 @@ class StationViewModel : ViewModel() {
         }
     }
     
-    fun joinWaitlist(stationId: String, context: android.content.Context) {
+    fun joinWaitlist(stationId: String) {
         viewModelScope.launch {
             joinState.value = UiState.Loading
-            val userId = DeviceIdManager.getUserId(context)
+            val userId = auth.currentUser?.uid ?: return@launch
             val result = repository.addToWaitlist(stationId, userId)
             joinState.value = if (result.isSuccess) {
                 UiState.Success(Unit)
@@ -44,10 +44,10 @@ class StationViewModel : ViewModel() {
         }
     }
 
-    fun leaveWaitlist(stationId: String, context: android.content.Context) {
+    fun leaveWaitlist(stationId: String) {
         viewModelScope.launch {
             joinState.value = UiState.Loading
-            val userId = DeviceIdManager.getUserId(context)
+            val userId = auth.currentUser?.uid ?: return@launch
             val result = repository.removeFromWaitlist(stationId, userId)
             joinState.value = if (result.isSuccess) {
                 UiState.Success(Unit)
@@ -57,9 +57,9 @@ class StationViewModel : ViewModel() {
         }
     }
     
-    fun checkAndStartSession(stationId: String, context: android.content.Context) {
+    fun checkAndStartSession(stationId: String) {
         viewModelScope.launch {
-            val userId = DeviceIdManager.getUserId(context)
+            val userId = auth.currentUser?.uid ?: return@launch
             val station = repository.getStation(stationId)
             
             if (station != null && station.isAtPositionOne(userId)) {

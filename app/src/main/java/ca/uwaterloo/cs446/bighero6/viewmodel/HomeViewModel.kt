@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
-import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -28,14 +28,15 @@ data class WaitlistSummary(
  */
 class HomeViewModel : ViewModel() {
     private val repository = FirestoreRepository()
+    private val auth = FirebaseAuth.getInstance()
     private var stationListeners = mutableMapOf<String, ListenerRegistration>()
     private var userListener: ListenerRegistration? = null
     
     val waitlists = MutableStateFlow<List<WaitlistSummary>>(emptyList())
     
-    fun subscribeToWaitlists(context: android.content.Context) {
+    fun subscribeToWaitlists() {
         viewModelScope.launch {
-            val userId = DeviceIdManager.getUserId(context)
+            val userId = auth.currentUser?.uid ?: return@launch
             
             userListener?.remove()
             userListener = repository.subscribeToUser(userId) { user ->
@@ -122,7 +123,8 @@ class HomeViewModel : ViewModel() {
             hasActiveSession,
             waitingCount
         )
-        waitlists.value = waitlists.value.filter { it.stationId != station.id } + summary
+        waitlists.value = (waitlists.value.filter { it.stationId != station.id } + summary)
+            .sortedBy { it.stationName } // Keep a stable order
     }
     
     override fun onCleared() {

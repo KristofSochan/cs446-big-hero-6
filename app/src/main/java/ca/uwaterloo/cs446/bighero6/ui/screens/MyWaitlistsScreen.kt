@@ -8,31 +8,26 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.ui.components.TapListScaffold
-import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
 import ca.uwaterloo.cs446.bighero6.viewmodel.HomeViewModel
 
 // Dev-only controls for testing; flip to false when not needed
 private const val SHOW_SIMULATE_NFC_BUTTON = true
-private const val SHOW_RESET_USER_ID_BUTTON = false
 
 /**
  * Shows all waitlists user is currently in
  */
 @Composable
 fun MyWaitlistsScreen(navController: NavController, viewModel: HomeViewModel = viewModel()) {
-    val context = LocalContext.current
     val waitlists by viewModel.waitlists.collectAsState()
-    var userId by remember { mutableStateOf(DeviceIdManager.getUserId(context)) }
     
     LaunchedEffect(Unit) {
-        viewModel.subscribeToWaitlists(context)
+        viewModel.subscribeToWaitlists()
     }
 
     TapListScaffold(
@@ -57,27 +52,13 @@ fun MyWaitlistsScreen(navController: NavController, viewModel: HomeViewModel = v
                     Text("Test: Go to Station (Simulate NFC)")
                 }
             }
-
-            if (SHOW_RESET_USER_ID_BUTTON) {
-                Button(
-                    onClick = {
-                        userId = DeviceIdManager.resetUserId(context)
-                    },
-                    modifier = Modifier.padding(bottom = 16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondary
-                    )
-                ) {
-                    Text("Test: Reset User ID")
-                }
-            }
             
             if (waitlists.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text("No active waitlists")
                 }
             } else {
-                LazyColumn {
+                LazyColumn(modifier = Modifier.weight(1f)) {
                     items(waitlists) { waitlist ->
                         Card(
                             Modifier

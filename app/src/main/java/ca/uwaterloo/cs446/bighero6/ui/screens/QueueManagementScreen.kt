@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.data.Station
+import ca.uwaterloo.cs446.bighero6.data.User
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -27,8 +28,21 @@ fun QueueManagementScreen(
 ) {
     var station by remember { mutableStateOf<Station?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var userMap by remember { mutableStateOf<Map<String, User>>(emptyMap()) }
     val repository = remember { FirestoreRepository() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(station) {
+        station?.let { s ->
+            val userIds = s.attendees.map { it.userId }.toMutableList()
+            s.currentSession?.userId?.let { userIds.add(it) }
+            
+            if (userIds.isNotEmpty()) {
+                val users = repository.getUsers(userIds.distinct())
+                userMap = users.associateBy { it.id }
+            }
+        }
+    }
 
     DisposableEffect(stationId) {
         val registration = repository.subscribeToStation(stationId) { updatedStation ->
@@ -108,6 +122,7 @@ fun QueueManagementScreen(
                         
                         val startedAtDate = session.startedAt?.toDate()
                         val timeFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
+                        val userName = userMap[session.userId]?.displayName ?: (session.userId?.take(8) ?: "Unknown")
                         
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -124,7 +139,7 @@ fun QueueManagementScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "${session.userId?.take(8) ?: "Unknown"}...",
+                                        text = userName,
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -193,6 +208,7 @@ fun QueueManagementScreen(
                             itemsIndexed(attendees) { index, attendee ->
                                 val joinedAtDate = attendee.joinedAt.toDate()
                                 val timeFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
+                                val attendeeName = userMap[attendee.userId]?.displayName ?: attendee.userId.take(8)
                                 
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
@@ -209,7 +225,7 @@ fun QueueManagementScreen(
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "${index + 1}. ${attendee.userId.take(8)}...",
+                                                text = "${index + 1}. $attendeeName",
                                                 style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold
                                             )
