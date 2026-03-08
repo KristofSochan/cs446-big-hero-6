@@ -74,13 +74,23 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
             }
 
             if (isTimedMode) {
-                val minutes = TimeUnit.MILLISECONDS.toMinutes(timeRemaining)
-                val seconds = TimeUnit.MILLISECONDS.toSeconds(timeRemaining) % 60
-                Text(
-                    String.format("%02d:%02d", minutes, seconds),
-                    style = MaterialTheme.typography.displayMedium,
-                    modifier = Modifier.padding(16.dp)
-                )
+                val waitingForServer = timeRemaining == 0L && !isExpired
+                if (waitingForServer) {
+                    Text(
+                        "Starting…",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                } else {
+                    val minutes = TimeUnit.MILLISECONDS.toMinutes(timeRemaining)
+                    val seconds = TimeUnit.MILLISECONDS.toSeconds(timeRemaining) % 60
+                    Text(
+                        String.format("%02d:%02d", minutes, seconds),
+                        style = MaterialTheme.typography.displayMedium,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
             } else {
                 Text(
                     "No time limit",

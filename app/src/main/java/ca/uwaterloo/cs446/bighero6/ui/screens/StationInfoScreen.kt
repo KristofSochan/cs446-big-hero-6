@@ -46,9 +46,9 @@ fun StationInfoScreen(
             is UiState.Success -> {
                 val station = state.data
                 val userId = DeviceIdManager.getUserId(context)
-                val isInWaitlist = station.attendees.any { it.userId == userId }
+                val isInWaitlist = userId in station.attendees
                 val position = if (isInWaitlist) station.calculatePosition(userId) else 0
-                val peopleInLine = station.attendees.count { it.status == "waiting" }
+                val peopleInLine = station.attendees.values.count { it.status == "waiting" }
                 val hasActiveSession = station.currentSession != null
                 val isMySessionActive = station.currentSession?.userId == userId
                 val isFirstInLine = isInWaitlist && position == 1

@@ -19,8 +19,9 @@ export interface CurrentSession {
 export interface Station {
   name: string;
   isActive: boolean;
+  mode?: string;
   sessionDurationSeconds?: number;
-  attendees: Attendee[];
+  attendees: Record<string, Attendee>;
   currentSession?: CurrentSession;
 }
 

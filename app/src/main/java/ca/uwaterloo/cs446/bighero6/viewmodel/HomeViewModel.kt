@@ -60,7 +60,7 @@ class HomeViewModel : ViewModel() {
                 currentStationIds.forEach { stationId ->
                     if (!stationListeners.containsKey(stationId)) {
                         val listener = repository.subscribeToStation(stationId) { station ->
-                            if (station == null || userId !in station.attendees.map { it.userId } && station.currentSession?.userId != userId) {
+                            if (station == null || userId !in station.attendees && station.currentSession?.userId != userId) {
                                 // If station doesn't exist or we're not in it anymore, remove it
                                 waitlists.value = waitlists.value.filter { it.stationId != stationId }
                             } else {
@@ -77,7 +77,7 @@ class HomeViewModel : ViewModel() {
     private fun updateWaitlistSummary(station: Station, userId: String) {
         val isInSession = station.currentSession?.userId == userId
         val hasActiveSession = station.currentSession != null
-        val waitingCount = station.attendees.count { it.status == "waiting" }
+        val waitingCount = station.attendees.values.count { it.status == "waiting" }
         val position = if (isInSession) 0 else station.calculatePosition(userId)
         val isTimedMode = station.mode == "timed"
 

@@ -203,7 +203,7 @@ fun MyStationsScreen(navController: NavController) {
                                 
                                 Spacer(modifier = Modifier.height(8.dp))
                                 
-                                val waitingCount = station.attendees.count { it.status == "waiting" }
+                                val waitingCount = station.attendees.values.count { it.status == "waiting" }
                                 Text(
                                     text = "$waitingCount ${if (waitingCount == 1) "person" else "people"} in queue",
                                     style = MaterialTheme.typography.bodyMedium

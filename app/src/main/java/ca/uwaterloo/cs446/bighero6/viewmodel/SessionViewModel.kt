@@ -1,20 +1,24 @@
 package ca.uwaterloo.cs446.bighero6.viewmodel
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import com.google.firebase.firestore.ListenerRegistration
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
  * Manages session state: countdown for timed mode, end-session for manual mode.
+ * Uses elapsed-only countdown: get initialRemainingMs from server once, then
+ * displayRemaining = initialRemainingMs - elapsedSinceLoad (no client clock).
  */
 class SessionViewModel : ViewModel() {
     private val repository = FirestoreRepository()
     private var listener: ListenerRegistration? = null
+    private var countdownJob: Job? = null
 
     val timeRemaining = MutableStateFlow(0L)
     val isExpired = MutableStateFlow(false)
@@ -28,24 +32,41 @@ class SessionViewModel : ViewModel() {
     }
 
     /**
-     * Subscribes to station; for timed mode only, runs countdown and auto-ends at expiresAt.
-     * Manual mode has no timer — user ends via End Session button.
+     * Subscribes to station. When timed session has expiresAt, fetches initial remaining
+     * from server (getSessionTime callable) then counts down by elapsed time only.
      */
     fun startSessionTimer(stationId: String) {
         endSessionState.value = EndSessionState.Idle
+        isExpired.value = false
+        timeRemaining.value = 0
+        countdownJob?.cancel()
+
         listener = repository.subscribeToStation(stationId) { station ->
-            station?.currentSession?.expiresAt?.let { expiresAt ->
+            if (station?.currentSession == null) {
+                countdownJob?.cancel()
+                countdownJob = null
+                isExpired.value = true
+                return@subscribeToStation
+            }
+            // Timed mode: once we have a session, fetch server time and start elapsed-only countdown
+            if (station.currentSession.expiresAt != null && countdownJob?.isActive != true) {
                 viewModelScope.launch {
-                    while (true) {
-                        val remaining = expiresAt.seconds * 1000 - System.currentTimeMillis()
-                        if (remaining <= 0) {
-                            timeRemaining.value = 0
-                            repository.endSession(stationId)
-                            isExpired.value = true
-                            break
+                    val result = repository.getSessionTime(stationId)
+                    val initialMs = result.initialRemainingMs ?: return@launch
+                    val elapsedAtLoad = SystemClock.elapsedRealtime()
+                    countdownJob?.cancel()
+                    countdownJob = viewModelScope.launch {
+                        while (true) {
+                            delay(100)
+                            val elapsed = SystemClock.elapsedRealtime() - elapsedAtLoad
+                            val remaining = (initialMs - elapsed).coerceAtLeast(0L)
+                            timeRemaining.value = remaining
+                            if (remaining <= 0) {
+                                repository.endSession(stationId)
+                                isExpired.value = true
+                                break
+                            }
                         }
-                        timeRemaining.value = remaining
-                        delay(1000)
                     }
                 }
             }
@@ -68,6 +89,7 @@ class SessionViewModel : ViewModel() {
     }
 
     override fun onCleared() {
+        countdownJob?.cancel()
         listener?.remove()
     }
 }

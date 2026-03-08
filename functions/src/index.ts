@@ -8,6 +8,7 @@
  */
 
 import {setGlobalOptions} from "firebase-functions";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
 import {onTaskDispatched} from "firebase-functions/v2/tasks";
 import {getFunctions} from "firebase-admin/functions";
 import * as admin from "firebase-admin";
@@ -26,7 +27,10 @@ admin.initializeApp();
 // functions should each use functions.runWith({ maxInstances: 10 }) instead.
 // In the v1 API, each function can only serve one request per container, so
 // this will be the maximum concurrent request count.
-setGlobalOptions({maxInstances: 10});
+// us-east4 (Northern Virginia) - lower latency for Waterloo, ON
+const REGION = "us-east4";
+
+setGlobalOptions({maxInstances: 10, region: REGION});
 
 import {onDocumentUpdated} from "firebase-functions/v2/firestore";
 
@@ -36,7 +40,7 @@ import {onDocumentUpdated} from "firebase-functions/v2/firestore";
  * - When session ends: Notify next person in line
  */
 export const onStationUpdate = onDocumentUpdated(
-  "stations/{stationId}",
+  {document: "stations/{stationId}", region: REGION},
   async (event) => {
     const before = event.data?.before.data();
     const after = event.data?.after.data();
@@ -47,8 +51,27 @@ export const onStationUpdate = onDocumentUpdated(
     const beforeSession = before.currentSession;
     const afterSession = after.currentSession;
 
-    // Case 1: Session was just created - schedule expiration task
-    if (!beforeSession && afterSession?.expiresAt) {
+    // Case 0: New session (userId only). Set startedAt/expiresAt from server.
+    if (afterSession?.userId && !afterSession.startedAt) {
+      const now = admin.firestore.Timestamp.now();
+      const isTimed = after.mode === "timed";
+      const durationSec = after.sessionDurationSeconds ?? 900;
+      const update: Record<string, unknown> = {
+        "currentSession.startedAt": now,
+      };
+      if (isTimed) {
+        update["currentSession.expiresAt"] = new admin.firestore.Timestamp(
+          now.seconds + durationSec,
+          now.nanoseconds
+        );
+      }
+      const docRef = event.data?.after?.ref;
+      if (docRef) await docRef.update(update);
+      return;
+    }
+
+    // Case 1: Session has expiresAt - schedule expiration task
+    if (afterSession?.expiresAt && !beforeSession?.expiresAt) {
       logger.info(
         `Session started for station ${stationId}, scheduling expiration`
       );
@@ -59,19 +82,16 @@ export const onStationUpdate = onDocumentUpdated(
     if (beforeSession && !afterSession) {
       logger.info(`Session cleared for station ${stationId}`);
 
-      // Get attendees and find person at position 1
-      const attendees = after.attendees || [];
-      interface AttendeeData {
+      // Get attendees map values and find person at position 1
+      const attendeesMap = after.attendees || {};
+      const attendees = Object.values(attendeesMap) as Array<{
         status: string;
         joinedAt: admin.firestore.Timestamp;
         userId: string;
-      }
+      }>;
       const waitingAttendees = attendees
-        .filter((a: AttendeeData) => a.status === "waiting")
-        .sort(
-          (a: AttendeeData, b: AttendeeData) =>
-            a.joinedAt.toMillis() - b.joinedAt.toMillis()
-        );
+        .filter((a) => a.status === "waiting")
+        .sort((a, b) => a.joinedAt.toMillis() - b.joinedAt.toMillis());
 
       if (waitingAttendees.length > 0) {
         const nextUserId = waitingAttendees[0].userId;
@@ -124,7 +144,7 @@ async function scheduleSessionExpiration(
  */
 async function getFunctionUrl(functionName: string): Promise<string> {
   const projectId = process.env.GCLOUD_PROJECT || admin.app().options.projectId;
-  const region = process.env.FUNCTION_REGION || "us-central1";
+  const region = process.env.FUNCTION_REGION || REGION;
   return `https://${region}-${projectId}.cloudfunctions.net/${functionName}`;
 }
 
@@ -183,11 +203,44 @@ async function notifyUserAtPositionOne(
 }
 
 /**
+ * Callable: returns server time and session expiry for elapsed-only countdown.
+ * Client uses initialRemaining = (expiresAtMillis - serverTimeMillis) / 1000
+ * then counts down by elapsed time only (no clock skew).
+ */
+export const getSessionTime = onCall(
+  {region: REGION},
+  async (request) => {
+    const stationId = request.data?.stationId;
+    if (!stationId || typeof stationId !== "string") {
+      throw new HttpsError("invalid-argument", "stationId required");
+    }
+    const stationRef = admin.firestore()
+      .collection("stations")
+      .doc(stationId);
+    const stationDoc = await stationRef.get();
+    if (!stationDoc.exists) {
+      throw new HttpsError("not-found", "Station not found");
+    }
+    const session = stationDoc.data()?.currentSession;
+    const expiresAt = session?.expiresAt;
+    const serverNow = admin.firestore.Timestamp.now();
+    if (!expiresAt) {
+      return {expiresAtMillis: null, serverTimeMillis: serverNow.toMillis()};
+    }
+    return {
+      expiresAtMillis: expiresAt.toMillis(),
+      serverTimeMillis: serverNow.toMillis(),
+    };
+  }
+);
+
+/**
  * Cloud Task handler that expires a session
  * Scheduled precisely when session.expiresAt time is reached
  */
 export const expireSession = onTaskDispatched(
   {
+    region: REGION,
     retryConfig: {
       maxAttempts: 3,
       minBackoffSeconds: 10,

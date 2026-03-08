@@ -47,7 +47,7 @@ fun MyWaitlistsScreen(navController: NavController, viewModel: HomeViewModel = v
                     onClick = {
                         navController.navigate(
                             Screen.StationInfo("").createRoute(
-                                "07301e07-81b9-4ee2-96ae-d32c02d62977",
+                                "40ec596e-7f31-4db8-846c-7ef0c8a33876",
                                 autoStart = true
                             )
                         )

@@ -1,0 +1,8 @@
+---
+description: Read and follow project agent instructions from AGENTS.md
+alwaysApply: true
+---
+
+# Project agent instructions
+
+When working in this repo, **read and follow the instructions in `AGENTS.md`** at the project root. That file defines shared behavior for all developers' agents (e.g. running and fixing lint after editing `functions/`).
