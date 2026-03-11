@@ -5,13 +5,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
+import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
 import ca.uwaterloo.cs446.bighero6.viewmodel.SessionViewModel
-import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 /**
@@ -19,20 +20,65 @@ import java.util.concurrent.TimeUnit
  */
 @Composable
 fun SessionActiveScreen(stationId: String, navController: NavController, viewModel: SessionViewModel = viewModel()) {
+    val context = LocalContext.current
     val timeRemaining by viewModel.timeRemaining.collectAsState()
     val isExpired by viewModel.isExpired.collectAsState()
     val endSessionState by viewModel.endSessionState.collectAsState()
     var stationName by remember { mutableStateOf<String?>(null) }
     var isTimedMode by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    var startError by remember { mutableStateOf<String?>(null) }
+    val repository = remember { FirestoreRepository() }
 
     LaunchedEffect(stationId) {
-        viewModel.startSessionTimer(stationId)
-        scope.launch {
-            val repository = FirestoreRepository()
-            val station = repository.getStation(stationId)
-            stationName = station?.name
-            isTimedMode = station?.mode == "timed"
+        val station = repository.getStation(stationId)
+        stationName = station?.name
+        isTimedMode = station?.mode == "timed"
+        val userId = DeviceIdManager.getUserId(context)
+        when {
+            station == null -> startError = "Station not found"
+
+            // Already in a session on this station: just show the timer.
+            station.currentSession?.userId == userId -> {
+                viewModel.startSessionTimer(stationId)
+            }
+
+            // Idle station (no one waiting, no active session): first tap claims machine immediately.
+            station.currentSession == null && (station.attendees.isEmpty()) -> {
+                // Join the waitlist as the only person, then start the session.
+                val joinResult = repository.addToWaitlist(stationId, userId)
+                if (joinResult.isSuccess) {
+                    val startResult = repository.startSession(
+                        stationId,
+                        userId,
+                        station.sessionDurationSeconds,
+                        station.mode.ifEmpty { "manual" }
+                    )
+                    if (startResult.isSuccess) {
+                        viewModel.startSessionTimer(stationId)
+                    } else {
+                        startError = startResult.exceptionOrNull()?.message ?: "Failed to start session"
+                    }
+                } else {
+                    startError = joinResult.exceptionOrNull()?.message ?: "Failed to join waitlist"
+                }
+            }
+
+            // Head of queue and machine just freed: tap starts session.
+            station.currentSession == null && station.isAtPositionOne(userId) -> {
+                val result = repository.startSession(
+                    stationId,
+                    userId,
+                    station.sessionDurationSeconds,
+                    station.mode.ifEmpty { "manual" }
+                )
+                if (result.isSuccess) {
+                    viewModel.startSessionTimer(stationId)
+                } else {
+                    startError = result.exceptionOrNull()?.message ?: "Failed to start session"
+                }
+            }
+
+            else -> startError = "You're not at the front of the line"
         }
     }
 
@@ -58,7 +104,12 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        if (isExpired) {
+        if (startError != null) {
+            Text(startError!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 16.dp))
+            TextButton(onClick = {
+                navController.navigate(Screen.MyWaitlists.route) { popUpTo(Screen.MyWaitlists.route) { inclusive = false } }
+            }) { Text("Back to My Waitlists") }
+        } else if (isExpired) {
             Text("Session Ended", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 8.dp))
             Text("Returning to My Waitlists...", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {

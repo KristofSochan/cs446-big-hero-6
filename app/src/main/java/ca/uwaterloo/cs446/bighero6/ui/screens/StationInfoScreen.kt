@@ -27,12 +27,10 @@ fun StationInfoScreen(
     val context = LocalContext.current
     val stationState by viewModel.stationState.collectAsState()
     val joinState by viewModel.joinState.collectAsState()
-    var hasAutoStarted by remember { mutableStateOf(false) }
     var isLeaving by remember { mutableStateOf(false) }
     
     LaunchedEffect(stationId) {
         viewModel.loadStation(stationId)
-        hasAutoStarted = false
         isLeaving = false
     }
 
@@ -52,34 +50,58 @@ fun StationInfoScreen(
                 val hasActiveSession = station.currentSession != null
                 val isMySessionActive = station.currentSession?.userId == userId
                 val isFirstInLine = isInWaitlist && position == 1
-                val shouldAutoStart =
-                    autoStart && isFirstInLine && !isMySessionActive && station.currentSession?.userId == null
+                val isIdleStation = peopleInLine == 0 && !hasActiveSession
 
                 LaunchedEffect(isMySessionActive, autoStart) {
+                    // If user already has an active session and this was launched via NFC,
+                    // go straight to the active session screen.
                     if (autoStart && isMySessionActive) {
                         navController.navigate(Screen.SessionActive("").createRoute(stationId))
                     }
                 }
 
-                LaunchedEffect(shouldAutoStart) {
-                    if (shouldAutoStart && !hasAutoStarted) {
-                        hasAutoStarted = true
-                        viewModel.checkAndStartSession(stationId, context)
+                LaunchedEffect(isIdleStation, autoStart) {
+                    // NFC tap on an idle station: treat tap as "start now" and skip extra button.
+                    if (autoStart && isIdleStation) {
+                        navController.navigate(Screen.SessionActive("").createRoute(stationId))
                     }
                 }
-                
-                Text(
-                    station.name,
-                    style = MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
+
+                LaunchedEffect(isFirstInLine, hasActiveSession, autoStart) {
+                    // NFC tap when user is head of line and station is free: auto-start session.
+                    if (autoStart && isFirstInLine && !hasActiveSession) {
+                        navController.navigate(Screen.SessionActive("").createRoute(stationId))
+                    }
+                }
+
+                // Top section: title + station name
+                if (isIdleStation) {
+                    Text(
+                        "Machine Available",
+                        style = MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    Text(
+                        station.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                } else {
+                    Text(
+                        station.name,
+                        style = MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
 
                 val statusText = when {
                     isMySessionActive -> "You're currently using this station"
+                    isIdleStation ->
+                        "No one is waiting. Your session will begin immediately."
                     isFirstInLine && !hasActiveSession ->
-                        "Station is available, tap the NFC tag to start your session"
+                        "Your turn. Go to the machine and tap the NFC tag to start your session."
                     isFirstInLine && hasActiveSession ->
-                        "You will be notified when the station is ready"
+                        "You will be notified when the station is ready."
                     else -> null
                 }
 
@@ -112,14 +134,43 @@ fun StationInfoScreen(
                         )
                         CircularProgressIndicator()
                     }
-                    shouldAutoStart -> {
+                    isIdleStation -> {
+                        // Empty queue, no active session: "Machine Available" flow
+                        val durationMinutes = station.sessionDurationSeconds / 60
+                        val sessionInfo = if (station.mode == "timed") {
+                            "Session length: $durationMinutes minutes"
+                        } else {
+                            "Unlimited until someone joins the queue"
+                        }
+
                         Text(
-                            "Starting your session...",
+                            sessionInfo,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 16.dp)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 24.dp)
                         )
-                        CircularProgressIndicator()
+
+                        Button(
+                            onClick = {
+                                // App-initiated start on idle station: go straight to active session.
+                                navController.navigate(Screen.SessionActive("").createRoute(stationId))
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                        ) {
+                            Text("Start Session")
+                        }
+
+                        TextButton(
+                            onClick = {
+                                navController.navigate(Screen.MyWaitlists.route) {
+                                    popUpTo(Screen.MyWaitlists.route) { inclusive = false }
+                                }
+                            }
+                        ) {
+                            Text("Back to My Waitlists")
+                        }
                     }
                     isInWaitlist -> {
                         Text("You're #$position in line", modifier = Modifier.padding(bottom = 8.dp))
@@ -170,7 +221,7 @@ fun StationInfoScreen(
                     }
                 }
                 
-                // Navigate on success
+                // Navigate on success (join/leave waitlist only; session start is on SessionActiveScreen)
                 LaunchedEffect(joinState) {
                     val currentJoinState = joinState
                     if (currentJoinState is UiState.Success) {
@@ -178,11 +229,9 @@ fun StationInfoScreen(
                             navController.navigate(Screen.MyWaitlists.route) {
                                 popUpTo(Screen.MyWaitlists.route) { inclusive = false }
                             }
-                        } else if (isInWaitlist && position == 1) {
-                            navController.navigate(Screen.SessionActive("").createRoute(stationId))
                         } else {
-                            navController.navigate(Screen.MyWaitlists.route) { 
-                                popUpTo(Screen.MyWaitlists.route) { inclusive = false } 
+                            navController.navigate(Screen.MyWaitlists.route) {
+                                popUpTo(Screen.MyWaitlists.route) { inclusive = false }
                             }
                         }
                     }

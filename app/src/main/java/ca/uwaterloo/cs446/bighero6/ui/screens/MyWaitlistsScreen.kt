@@ -107,13 +107,13 @@ fun MyWaitlistsScreen(navController: NavController, viewModel: HomeViewModel = v
 
                                 when {
                                     waitlist.isInSession -> {
-                                        Text("You're currently using ${waitlist.stationName} station")
+                                        Text("You're currently using ${waitlist.stationName}")
                                     }
 
                                     waitlist.position == 1 && !waitlist.hasActiveSession -> {
-                                        Text("Position 1, you're next!")
+                                        Text("Your turn", fontWeight = FontWeight.SemiBold)
                                         Text(
-                                            "Station is available, tap the NFC tag to start your session",
+                                            "Go to the machine and tap the NFC tag to start your session.",
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.padding(top = 8.dp)
@@ -121,9 +121,9 @@ fun MyWaitlistsScreen(navController: NavController, viewModel: HomeViewModel = v
                                     }
 
                                     waitlist.position == 1 && waitlist.hasActiveSession -> {
-                                        Text("Position 1, you're next!")
+                                        Text("You're next in line")
                                         Text(
-                                            "You will be notified when the station is ready",
+                                            "You'll be notified when the machine is ready.",
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(top = 8.dp)
@@ -133,7 +133,7 @@ fun MyWaitlistsScreen(navController: NavController, viewModel: HomeViewModel = v
                                     waitlist.position > 1 -> {
                                         Text("Position: ${waitlist.position}")
                                         if (waitlist.estimatedWaitTime.isNotEmpty()) {
-                                            Text("ETA: ${waitlist.estimatedWaitTime}")
+                                            Text("Estimated wait: ${waitlist.estimatedWaitTime}")
                                         }
                                     }
                                 }

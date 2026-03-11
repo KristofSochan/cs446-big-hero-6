@@ -256,9 +256,6 @@ class FirestoreRepository {
                 IllegalStateException("Station not found")
             )
 
-            val userEntry = station.attendees[userId]
-                ?: return Result.failure(IllegalStateException("User not in waitlist"))
-
             db.runTransaction { transaction ->
                 val stationRef = db.collection("stations").document(stationId)
                 val currentStation = transaction.get(stationRef).toObject(Station::class.java)
@@ -385,6 +382,8 @@ class FirestoreRepository {
     /**
      * End session - clears currentSession so next person can start,
      * and removes the station from the user's currentWaitlists.
+     * If the session was already cleared (e.g. by the server expiration task),
+     * returns success so the client doesn't show an error.
      */
     suspend fun endSession(stationId: String): Result<Unit> {
         return try {
@@ -401,6 +400,12 @@ class FirestoreRepository {
             }.await()
 
             Result.success(Unit)
+        } catch (e: IllegalStateException) {
+            if (e.message == "No active session to end") {
+                Result.success(Unit)
+            } else {
+                Result.failure(e)
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
