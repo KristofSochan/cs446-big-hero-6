@@ -112,14 +112,6 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
         }
     }
 
-    LaunchedEffect(endSessionState) {
-        if (endSessionState is SessionViewModel.EndSessionState.Success) {
-            navController.navigate(Screen.MyWaitlists.route) {
-                popUpTo(Screen.MyWaitlists.route) { inclusive = false }
-            }
-        }
-    }
-
     Column(
         Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -154,18 +146,22 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
                 contentAlignment = Alignment.Center
             ) {
                 if (isTimedMode) {
-                    val endingDueToExpiry =
-                        timeRemaining == 0L && !isExpired &&
-                        endSessionState is SessionViewModel.EndSessionState.Loading
-                    val waitingForServer =
-                        timeRemaining == 0L && !isExpired && !endingDueToExpiry
+                    val isZero = timeRemaining == 0L
+                    val endingState =
+                        isZero && (endSessionState is SessionViewModel.EndSessionState.Loading ||
+                            endSessionState is SessionViewModel.EndSessionState.Success ||
+                            isExpired)
+                    val startingState =
+                        isZero && !isExpired &&
+                            endSessionState !is SessionViewModel.EndSessionState.Loading &&
+                            endSessionState !is SessionViewModel.EndSessionState.Success
                     when {
-                        endingDueToExpiry -> Text(
+                        endingState -> Text(
                             "Ending session…",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        waitingForServer -> Text(
+                        startingState -> Text(
                             "Starting…",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -197,12 +193,16 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
             }
 
             if (!operatorManagesSessionsOnly) {
+                val isEnding =
+                    endSessionState is SessionViewModel.EndSessionState.Loading ||
+                        endSessionState is SessionViewModel.EndSessionState.Success ||
+                        isExpired
                 Button(
                     onClick = { viewModel.endSession(stationId) },
-                    enabled = endSessionState !is SessionViewModel.EndSessionState.Loading,
+                    enabled = !isEnding,
                     modifier = Modifier.padding(top = 8.dp)
                 ) {
-                    Text(if (endSessionState is SessionViewModel.EndSessionState.Loading) "Ending…" else "End Session")
+                    Text(if (isEnding) "Ending…" else "End Session")
                 }
             }
 
