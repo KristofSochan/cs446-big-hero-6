@@ -181,7 +181,13 @@ fun MyStationsScreen(navController: NavController) {
                                             )
                                             DropdownMenuItem(
                                                 text = { Text("View analytics") },
-                                                onClick = { expanded = false }
+                                                onClick = {
+                                                    expanded = false
+                                                    navController.navigate(
+                                                        Screen.StationAnalytics(station.id)
+                                                            .createRoute(station.id)
+                                                    )
+                                                }
                                             )
                                             DropdownMenuItem(
                                                 text = { 

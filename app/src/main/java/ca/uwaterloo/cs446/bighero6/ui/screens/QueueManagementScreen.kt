@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.data.Station
+import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -29,6 +30,7 @@ fun QueueManagementScreen(
     var isLoading by remember { mutableStateOf(true) }
     val repository = remember { FirestoreRepository() }
     val scope = rememberCoroutineScope()
+    var showMenu by remember { mutableStateOf(false) }
 
     DisposableEffect(stationId) {
         val registration = repository.subscribeToStation(stationId) { updatedStation ->
@@ -50,6 +52,29 @@ fun QueueManagementScreen(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back"
                         )
+                    }
+                }
+                ,
+                actions = {
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("View analytics") },
+                                onClick = {
+                                    showMenu = false
+                                    navController.navigate(
+                                        Screen.StationAnalytics(stationId)
+                                            .createRoute(stationId)
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
             )
