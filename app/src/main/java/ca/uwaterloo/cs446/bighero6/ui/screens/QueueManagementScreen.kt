@@ -74,7 +74,7 @@ fun QueueManagementScreen(
                 Text("Station not found")
             }
         } else {
-            val attendees = station!!.attendees.sortedBy { it.joinedAt }
+            val attendees = station!!.attendees.values.sortedBy { it.joinedAt }
             val currentSession = station!!.currentSession
             
             Column(

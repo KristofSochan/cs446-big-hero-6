@@ -26,8 +26,8 @@ data class Station(
     val isActive: Boolean = true,
     val sessionDurationMinutes: Int = 15,
     val mode: String = "manual", // "manual" or "timed"
-    // Waitlist data embedded
-    val attendees: List<Attendee> = emptyList(),
+    // Waitlist data embedded (map keyed by userId for server timestamps)
+    val attendees: Map<String, Attendee> = emptyMap(),
     val currentSession: CurrentSession? = null
 )
 ```
@@ -39,7 +39,7 @@ data class Station(
 - `isActive` - Whether the station is accepting new attendees
 - `sessionDurationMinutes` - How long each session lasts (default: 15 minutes)
 - `mode` - Waitlist/session behavior: `"manual"` (session ends only when user taps **End Session**) or `"timed"` (session automatically expires after `sessionDurationMinutes`)
-- `attendees` - Array of people waiting/attending
+- `attendees` - Map of userId → Attendee (queue order is by sorting values by `joinedAt`; join time uses server timestamp)
 - `currentSession` - Currently active session (null if no one is using it)
 
 **Helper Methods:**
@@ -55,18 +55,18 @@ data class Station(
   "isActive": true,
   "sessionDurationMinutes": 15,
   "mode": "manual",
-  "attendees": [
-    {
+  "attendees": {
+    "user1": {
       "userId": "user1",
       "status": "waiting",
       "joinedAt": "2024-01-01T10:00:00Z"
     },
-    {
+    "user2": {
       "userId": "user2",
       "status": "waiting",
       "joinedAt": "2024-01-01T10:05:00Z"
     }
-  ],
+  },
   "currentSession": null
 }
 ```
@@ -82,7 +82,7 @@ data class Station(
 
 ### Attendee
 
-**Embedded in:** `Station.attendees` array
+**Embedded in:** `Station.attendees` map (key = userId)
 
 Represents a single person in a waitlist.
 
@@ -98,13 +98,13 @@ data class Attendee(
 
 - `userId` - Reference to user document
 - `status` - Current status: `"waiting"`, `"attending"`, or `"removed"`
-- `joinedAt` - Timestamp when user joined (used for position calculation)
+- `joinedAt` - When the user joined the queue (server timestamp; used for position calculation)
 
 **Status Values:**
 
 - `"waiting"` - User is in queue, waiting for their turn
-- `"attending"` - User is currently using the station (should be removed from attendees array)
-- `"removed"` - User was manually removed (optional, can just delete from array)
+- `"attending"` - User is currently using the station (should be removed from attendees map)
+- `"removed"` - User was manually removed (optional, can just delete from map)
 
 ---
 
@@ -172,7 +172,7 @@ Station
   └──> (0..1) CurrentSession ──> (1) User
 ```
 
-- Each **Station** contains many **Attendees** (embedded array)
+- Each **Station** contains many **Attendees** (embedded map keyed by userId)
 - Each **Attendee** references one **User**
 - Each **Station** has zero or one **CurrentSession** (embedded)
 - Each **CurrentSession** references one **User**
@@ -185,9 +185,9 @@ Station
 
 **Trade-off:** Requires sorting on every position check, but acceptable for prototype (< 100 users per waitlist).
 
-### 2. Attendees Array vs Subcollection
+### 2. Attendees Map vs Subcollection
 
-**Why:** Using an array embedded in Station document instead of a subcollection:
+**Why:** Using a map (keyed by userId) embedded in Station document instead of a subcollection:
 
 - Simpler queries (single document read)
 - Atomic transactions easier
@@ -204,7 +204,7 @@ Station
 
 ### 4. CurrentSession Separate from Attendees
 
-**Why:** When user starts session, they're removed from `attendees` array and added to `currentSession`. This makes it clear who's actively using vs waiting.
+**Why:** When user starts session, they're removed from `attendees` map and added to `currentSession`. This makes it clear who's actively using vs waiting.
 
 **Benefit:** Easy to query "who's waiting" vs "who's using".
 
@@ -222,7 +222,7 @@ Station
 2. App fetches `/stations/abc123` → Gets station name and waitlist data
 3. User confirms join
 4. Transaction:
-   - Add `Attendee(userId, "waiting", now)` to `/stations/abc123/attendees`
+   - Set `/stations/abc123/attendees/{userId}` = `Attendee(userId, "waiting", serverTimestamp())`
    - Add `"abc123"` to `/users/{userId}/currentWaitlists`
 5. Position calculated: `station.calculatePosition(userId)` → Returns 4
 
@@ -232,14 +232,14 @@ Station
 2. Check: `station.isAtPositionOne(userId)` → true
 3. Transaction:
    - Set `/stations/abc123/currentSession` = `CurrentSession(userId, now, now+15min)`
-   - Remove user from `/stations/abc123/attendees` array
+   - Delete `/stations/abc123/attendees/{userId}`
 4. Navigate to SessionActiveScreen
 
 ### Session Expires
 
 1. Client-side timer reaches `expiresAt`
 2. Update `/stations/abc123/currentSession` = `null`
-3. Next person in `attendees` array can now start session
+3. Next person in `attendees` (by sorted joinedAt) can now start session
 
 ## Firestore Security Rules
 

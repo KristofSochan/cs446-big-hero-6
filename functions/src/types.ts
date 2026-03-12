@@ -16,12 +16,21 @@ export interface CurrentSession {
   expiresAt: admin.firestore.Timestamp | null;
 }
 
+export interface CurrentReservation {
+  userId: string;
+  expiresAt: admin.firestore.Timestamp;
+}
+
 export interface Station {
   name: string;
   isActive: boolean;
+  mode?: string;
   sessionDurationSeconds?: number;
-  attendees: Attendee[];
+  enforceCheckinLimit?: boolean;
+  checkinWindowSeconds?: number;
+  attendees: Record<string, Attendee>;
   currentSession?: CurrentSession;
+  currentReservation?: CurrentReservation;
 }
 
 export interface User {

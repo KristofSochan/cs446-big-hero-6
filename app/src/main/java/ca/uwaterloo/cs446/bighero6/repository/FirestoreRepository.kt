@@ -7,6 +7,7 @@ import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.functions.FirebaseFunctions
 import kotlinx.coroutines.tasks.await
 import java.util.Date
 import java.util.UUID
@@ -15,8 +16,22 @@ import java.util.UUID
  * Handles all Firestore database operations
  * Simple wrapper around Firebase SDK - easy to extend with new queries
  */
+/** Region where Cloud Functions are deployed (must match functions/src). */
+private const val FUNCTIONS_REGION = "us-east4"
+
+/**
+ * Result of getSessionTime callable: initial remaining ms for elapsed-only countdown, or null.
+ */
+data class SessionTimeResult(val initialRemainingMs: Long?)
+
+/**
+ * Result of getReservationTime callable: initial remaining ms for check-in countdown, or null.
+ */
+data class ReservationTimeResult(val initialRemainingMs: Long?)
+
 class FirestoreRepository {
     private val db = FirebaseFirestore.getInstance()
+    private val functions = FirebaseFunctions.getInstance(FUNCTIONS_REGION)
 
     /**
      * Create or update a station
@@ -126,27 +141,22 @@ class FirestoreRepository {
     }
     
     /**
-     * Add user to waitlist (transaction-safe)
+     * Add user to waitlist (transaction-safe).
+     * Attendees stored as map keyed by userId; joinedAt uses server timestamp.
      */
     suspend fun addToWaitlist(stationId: String, userId: String): Result<Unit> {
         return try {
             db.runTransaction { transaction ->
                 val stationRef = db.collection("stations").document(stationId)
-                
-                val newAttendee = Attendee(
-                    userId = userId,
-                    status = "waiting",
-                    joinedAt = Timestamp.now()
+                val newAttendee = mapOf(
+                    "userId" to userId,
+                    "status" to "waiting",
+                    "joinedAt" to FieldValue.serverTimestamp()
                 )
-                
-                // Add to attendees array
-                transaction.update(stationRef, "attendees", FieldValue.arrayUnion(newAttendee))
-                
-                // Update user's waitlists
+                transaction.update(stationRef, "attendees.$userId", newAttendee)
                 val userRef = db.collection("users").document(userId)
                 transaction.update(userRef, "currentWaitlists", FieldValue.arrayUnion(stationId))
             }.await()
-            
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -162,19 +172,12 @@ class FirestoreRepository {
                 val stationRef = db.collection("stations").document(stationId)
                 val stationDoc = transaction.get(stationRef)
                 val station = stationDoc.toObject(Station::class.java)
-                
-                val attendeeToRemove = station?.attendees?.find { it.userId == userId }
-                
-                if (attendeeToRemove != null) {
-                    // Remove from attendees array
-                    transaction.update(stationRef, "attendees", FieldValue.arrayRemove(attendeeToRemove))
-                    
-                    // Update user's waitlists
+                if (station?.attendees?.containsKey(userId) == true) {
+                    transaction.update(stationRef, "attendees.$userId", FieldValue.delete())
                     val userRef = db.collection("users").document(userId)
                     transaction.update(userRef, "currentWaitlists", FieldValue.arrayRemove(stationId))
                 }
             }.await()
-            
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -190,22 +193,14 @@ class FirestoreRepository {
                 val stationRef = db.collection("stations").document(stationId)
                 val station = transaction.get(stationRef).toObject(Station::class.java)
                     ?: throw IllegalStateException("Station not found")
-                
-                val attendees = station.attendees.toMutableList()
-                val attendeeIndex = attendees.indexOfFirst { it.userId == userId }
-                if (attendeeIndex == -1) throw IllegalStateException("User not in waitlist")
-                
-                val firstAttendee = attendees.minByOrNull { it.joinedAt }
+                station.attendees[userId] ?: throw IllegalStateException("User not in waitlist")
+                val firstAttendee = station.attendees.values.minByOrNull { it.joinedAt }
                 val newTimestamp = if (firstAttendee != null) {
                     Timestamp(Date(firstAttendee.joinedAt.toDate().time - 1000))
                 } else {
                     Timestamp.now()
                 }
-                
-                val updatedAttendee = attendees[attendeeIndex].copy(joinedAt = newTimestamp)
-                attendees[attendeeIndex] = updatedAttendee
-                
-                transaction.update(stationRef, "attendees", attendees)
+                transaction.update(stationRef, "attendees.$userId.joinedAt", newTimestamp)
             }.await()
             Result.success(Unit)
         } catch (e: Exception) {
@@ -222,22 +217,14 @@ class FirestoreRepository {
                 val stationRef = db.collection("stations").document(stationId)
                 val station = transaction.get(stationRef).toObject(Station::class.java)
                     ?: throw IllegalStateException("Station not found")
-                
-                val attendees = station.attendees.toMutableList()
-                val attendeeIndex = attendees.indexOfFirst { it.userId == userId }
-                if (attendeeIndex == -1) throw IllegalStateException("User not in waitlist")
-                
-                val lastAttendee = attendees.maxByOrNull { it.joinedAt }
+                station.attendees[userId] ?: throw IllegalStateException("User not in waitlist")
+                val lastAttendee = station.attendees.values.maxByOrNull { it.joinedAt }
                 val newTimestamp = if (lastAttendee != null) {
                     Timestamp(Date(lastAttendee.joinedAt.toDate().time + 1000))
                 } else {
                     Timestamp.now()
                 }
-                
-                val updatedAttendee = attendees[attendeeIndex].copy(joinedAt = newTimestamp)
-                attendees[attendeeIndex] = updatedAttendee
-                
-                transaction.update(stationRef, "attendees", attendees)
+                transaction.update(stationRef, "attendees.$userId.joinedAt", newTimestamp)
             }.await()
             Result.success(Unit)
         } catch (e: Exception) {
@@ -251,7 +238,7 @@ class FirestoreRepository {
     suspend fun isUserInWaitlist(stationId: String, userId: String): Boolean {
         return try {
             val station = getStation(stationId)
-            station?.attendees?.any { it.userId == userId } ?: false
+            station?.attendees?.containsKey(userId) ?: false
         } catch (e: Exception) {
             false
         }
@@ -259,7 +246,7 @@ class FirestoreRepository {
     
     /**
      * Start session for user at position 1
-     * - timed mode: session auto-expires after sessionDurationSeconds (Cloud Task scheduled)
+     * - timed mode: Cloud Function sets expiresAt from server time and schedules expiration task
      * - manual mode: session ends only when user taps End Session (no expiresAt)
      */
     suspend fun startSession(
@@ -269,20 +256,10 @@ class FirestoreRepository {
         mode: String = "manual"
     ): Result<Unit> {
         return try {
-            val isTimed = mode == "timed"
-            val expiresAt = if (isTimed) {
-                Timestamp(Date(System.currentTimeMillis() + sessionDurationSeconds * 1000L))
-            } else {
-                null
-            }
-
             // Get current station to find user entry
             val station = getStation(stationId) ?: return Result.failure(
                 IllegalStateException("Station not found")
             )
-
-            val userEntry = station.attendees.find { it.userId == userId }
-                ?: return Result.failure(IllegalStateException("User not in waitlist"))
 
             db.runTransaction { transaction ->
                 val stationRef = db.collection("stations").document(stationId)
@@ -298,14 +275,9 @@ class FirestoreRepository {
                     throw IllegalStateException("Station is currently in use")
                 }
 
-                val sessionMap = mutableMapOf<String, Any?>(
-                    "userId" to userId,
-                    "startedAt" to Timestamp.now()
-                )
-                sessionMap["expiresAt"] = expiresAt
-                transaction.update(stationRef, "currentSession", sessionMap)
-
-                transaction.update(stationRef, "attendees", FieldValue.arrayRemove(userEntry))
+                // Cloud Function sets startedAt and expiresAt from server time
+                transaction.update(stationRef, "currentSession", mapOf("userId" to userId))
+                transaction.update(stationRef, "attendees.$userId", FieldValue.delete())
             }.await()
 
             Result.success(Unit)
@@ -389,8 +361,57 @@ class FirestoreRepository {
     }
     
     /**
+     * Get session time from server for elapsed-only countdown (avoids client clock skew).
+     * Returns initialRemainingMs or null if no timed session.
+     */
+    suspend fun getSessionTime(stationId: String): SessionTimeResult {
+        return try {
+            val result = functions
+                .getHttpsCallable("getSessionTime")
+                .call(hashMapOf("stationId" to stationId))
+                .await()
+            @Suppress("UNCHECKED_CAST")
+            val data = result.data as? Map<String, Any?> ?: return SessionTimeResult(null)
+            val expiresAtMillis = (data["expiresAtMillis"] as? Number)?.toLong()
+            val serverTimeMillis = (data["serverTimeMillis"] as? Number)?.toLong()
+            if (expiresAtMillis == null || serverTimeMillis == null) {
+                return SessionTimeResult(null)
+            }
+            val initialRemainingMs = (expiresAtMillis - serverTimeMillis).coerceAtLeast(0L)
+            SessionTimeResult(initialRemainingMs)
+        } catch (e: Exception) {
+            SessionTimeResult(null)
+        }
+    }
+
+    /**
+     * Get reservation time from server for check-in countdown (elapsed-only, same as session).
+     */
+    suspend fun getReservationTime(stationId: String): ReservationTimeResult {
+        return try {
+            val result = functions
+                .getHttpsCallable("getReservationTime")
+                .call(hashMapOf("stationId" to stationId))
+                .await()
+            @Suppress("UNCHECKED_CAST")
+            val data = result.data as? Map<String, Any?> ?: return ReservationTimeResult(null)
+            val expiresAtMillis = (data["reservationExpiresAtMillis"] as? Number)?.toLong()
+            val serverTimeMillis = (data["serverTimeMillis"] as? Number)?.toLong()
+            if (expiresAtMillis == null || serverTimeMillis == null) {
+                return ReservationTimeResult(null)
+            }
+            val initialRemainingMs = (expiresAtMillis - serverTimeMillis).coerceAtLeast(0L)
+            ReservationTimeResult(initialRemainingMs)
+        } catch (e: Exception) {
+            ReservationTimeResult(null)
+        }
+    }
+
+    /**
      * End session - clears currentSession so next person can start,
      * and removes the station from the user's currentWaitlists.
+     * If the session was already cleared (e.g. by the server expiration task),
+     * returns success so the client doesn't show an error.
      */
     suspend fun endSession(stationId: String): Result<Unit> {
         return try {
@@ -407,6 +428,12 @@ class FirestoreRepository {
             }.await()
 
             Result.success(Unit)
+        } catch (e: IllegalStateException) {
+            if (e.message == "No active session to end") {
+                Result.success(Unit)
+            } else {
+                Result.failure(e)
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }

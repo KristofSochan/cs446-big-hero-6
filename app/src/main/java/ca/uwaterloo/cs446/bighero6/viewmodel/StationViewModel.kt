@@ -6,29 +6,42 @@ import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import ca.uwaterloo.cs446.bighero6.ui.UiState
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
+import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Manages station screen state - loading station, joining waitlist, starting session
+ * Manages station screen state - loading station, joining waitlist, starting session.
+ * Subscribes to the station so name, queue size, position, and "Your turn" update in real time.
  */
 class StationViewModel : ViewModel() {
     private val repository = FirestoreRepository()
-    
+    private var stationListener: ListenerRegistration? = null
+
     val stationState = MutableStateFlow<UiState<Station>>(UiState.Loading)
     val joinState = MutableStateFlow<UiState<Unit>>(UiState.Idle)
-    
+
+    /**
+     * Subscribes to the station so the screen stays reactive to queue/session changes.
+     */
     fun loadStation(stationId: String) {
-        viewModelScope.launch {
-            stationState.value = UiState.Loading
-            val station = repository.getStation(stationId)
+        stationListener?.remove()
+        stationListener = null
+        stationState.value = UiState.Loading
+
+        stationListener = repository.subscribeToStation(stationId) { station ->
             stationState.value = if (station != null) {
                 UiState.Success(station)
             } else {
                 UiState.Error("Station not found")
             }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stationListener?.remove()
+        stationListener = null
     }
     
     fun joinWaitlist(stationId: String, context: android.content.Context) {

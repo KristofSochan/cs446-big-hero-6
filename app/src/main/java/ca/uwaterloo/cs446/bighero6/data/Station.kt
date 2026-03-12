@@ -18,26 +18,26 @@ data class Station(
     val sessionDurationSeconds: Int = 900,
     val mode: String = "manual",
     val enforceCheckinLimit: Boolean = false,
-    val checkinWindowMinutes: Int = 15,
-    val attendees: List<Attendee> = emptyList(),
+    /** Check-in window in seconds (how long the head of queue has to start). */
+    val checkinWindowSeconds: Int = 60,
+    val attendees: Map<String, Attendee> = emptyMap(),
     val currentSession: CurrentSession? = null,
+    val currentReservation: CurrentReservation? = null,
     @ServerTimestamp
     val createdAt: Timestamp? = null
 ) {
     fun calculatePosition(userId: String): Int {
-        val waitingAttendees = attendees
+        val waitingAttendees = attendees.values
             .filter { it.status == "waiting" }
             .sortedBy { it.joinedAt.toDate().time }
-        
         val index = waitingAttendees.indexOfFirst { it.userId == userId }
         return if (index >= 0) index + 1 else 0
     }
-    
+
     fun isAtPositionOne(userId: String): Boolean {
-        val waitingAttendees = attendees
+        val waitingAttendees = attendees.values
             .filter { it.status == "waiting" }
             .sortedBy { it.joinedAt.toDate().time }
-        
         return waitingAttendees.isNotEmpty() && waitingAttendees[0].userId == userId
     }
 }

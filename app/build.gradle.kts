@@ -66,6 +66,7 @@ dependencies {
     // Firebase products
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-functions")
     implementation("com.google.firebase:firebase-messaging")
 
     // Navigation Compose

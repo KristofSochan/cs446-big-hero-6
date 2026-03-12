@@ -34,7 +34,7 @@ fun SessionEditorScreen(
     var state by remember { mutableStateOf(EditorStationState.Active) }
     var durationMinutes by remember { mutableStateOf("15") }
     var enforceCheckinLimit by remember { mutableStateOf(false) }
-    var checkinWindowMinutes by remember { mutableStateOf("15") }
+    var checkinWindowSeconds by remember { mutableStateOf("60") }
 
     var isLoading by remember { mutableStateOf(true) }
     val repository = remember { FirestoreRepository() }
@@ -49,7 +49,7 @@ fun SessionEditorScreen(
             state = if (station.isActive) EditorStationState.Active else EditorStationState.Inactive
             durationMinutes = (station.sessionDurationSeconds / 60).toString()
             enforceCheckinLimit = station.enforceCheckinLimit
-            checkinWindowMinutes = station.checkinWindowMinutes.toString()
+            checkinWindowSeconds = station.checkinWindowSeconds.toString()
             isLoading = false
         }
     }
@@ -154,14 +154,14 @@ fun SessionEditorScreen(
                     }
 
                     if (enforceCheckinLimit) {
-                        Text("Check-in window (minutes)", style = MaterialTheme.typography.labelMedium)
+                        Text("Check-in window (seconds)", style = MaterialTheme.typography.labelMedium)
                         OutlinedTextField(
-                            value = checkinWindowMinutes,
-                            onValueChange = { checkinWindowMinutes = it.filter(Char::isDigit) },
+                            value = checkinWindowSeconds,
+                            onValueChange = { checkinWindowSeconds = it.filter(Char::isDigit) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            placeholder = { Text("15") }
+                            placeholder = { Text("60") }
                         )
                     }
 
@@ -206,7 +206,7 @@ fun SessionEditorScreen(
                                     isActive = state == EditorStationState.Active,
                                     sessionDurationSeconds = (durationMinutes.toIntOrNull() ?: 0) * 60,
                                     enforceCheckinLimit = enforceCheckinLimit,
-                                    checkinWindowMinutes = checkinWindowMinutes.toIntOrNull() ?: 15
+                                    checkinWindowSeconds = checkinWindowSeconds.toIntOrNull() ?: 60
                                 )
                                 repository.setStation(updatedStation)
                             }
