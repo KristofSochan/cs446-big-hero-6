@@ -89,6 +89,11 @@ export const onStationUpdate = onDocumentUpdated(
         );
         return;
       }
+      logger.info(
+        `Scheduling expireSession task for station ${stationId} ` +
+          `(sessionId=${sessionId}, ` +
+          `expiresAt=${afterSession.expiresAt.toDate()})`,
+      );
       await scheduleSessionExpiration(
         stationId,
         afterSession.expiresAt,
@@ -440,6 +445,11 @@ export const expireSession = onTaskDispatched(
           null;
       if (sessionId && currentSessionId && currentSessionId !== sessionId) {
         // Stale task from a previous session; ignore quietly.
+        logger.info(
+          `Ignoring stale expireSession task for station ${stationId} ` +
+            `(taskSessionId=${sessionId}, ` +
+            `currentSessionId=${currentSessionId})`,
+        );
         return;
       }
 
@@ -467,6 +477,11 @@ export const expireSession = onTaskDispatched(
             latestSession.sessionId :
             null;
         if (sessionId && latestSessionId && latestSessionId !== sessionId) {
+          logger.info(
+            "Ignoring stale expireSession task in transaction for station " +
+              `${stationId} (taskSessionId=${sessionId}, ` +
+              `currentSessionId=${latestSessionId ?? "null"})`,
+          );
           return;
         }
         if (latestSession.expiresAt.toMillis() > now.toMillis()) return;
@@ -488,7 +503,10 @@ export const expireSession = onTaskDispatched(
         }
       });
 
-      logger.info(`Expired session for station ${stationId}`);
+      logger.info(
+        `Expired session for station ${stationId} ` +
+          `(sessionId=${sessionId ?? currentSessionId ?? "unknown"})`,
+      );
     } catch (error) {
       logger.error(`Error expiring session for station ${stationId}:`, error);
       throw error;
