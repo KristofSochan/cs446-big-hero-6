@@ -466,6 +466,10 @@ export const expireReservation = onTaskDispatched(
           `Station ${stationId} has active session; ` +
             "skipping reservation expiration",
         );
+        // Clean up any stale reservation state now that a session is active.
+        await stationRef.update({
+          currentReservation: admin.firestore.FieldValue.delete(),
+        });
         return;
       }
 
