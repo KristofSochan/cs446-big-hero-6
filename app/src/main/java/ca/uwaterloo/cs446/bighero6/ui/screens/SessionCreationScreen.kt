@@ -36,8 +36,11 @@ fun SessionCreationScreen(
     var mode by remember { mutableStateOf(StationMode.Manual) }
     var state by remember { mutableStateOf(StationState.Active) }
     var durationMinutes by remember { mutableStateOf("15") }
+    var durationSeconds by remember { mutableStateOf("00") }
+    var autoJoinEnabled by remember { mutableStateOf(true) }
     var enforceCheckinLimit by remember { mutableStateOf(false) }
-    var checkinWindowSeconds by remember { mutableStateOf("60") }
+    var checkinMinutes by remember { mutableStateOf("1") }
+    var checkinSeconds by remember { mutableStateOf("00") }
     
     val repository = remember { FirestoreRepository() }
     val scope = rememberCoroutineScope()
@@ -111,15 +114,39 @@ fun SessionCreationScreen(
                 }
 
                 if (mode == StationMode.Timed) {
-                    Text("Duration (minutes)", style = MaterialTheme.typography.labelMedium)
-                    OutlinedTextField(
-                        value = durationMinutes,
-                        onValueChange = { durationMinutes = it.filter(Char::isDigit) },
+                    Text("Session length", style = MaterialTheme.typography.labelMedium)
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        placeholder = { Text("15") }
-                    )
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = durationMinutes,
+                            onValueChange = { durationMinutes = it.filter(Char::isDigit) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            label = { Text("Min") },
+                            placeholder = { Text("15") }
+                        )
+                        OutlinedTextField(
+                            value = durationSeconds,
+                            onValueChange = {
+                                val digits = it.filter(Char::isDigit).take(2)
+                                val sec = digits.toIntOrNull()
+                                durationSeconds = when {
+                                    digits.isEmpty() -> ""
+                                    sec == null -> ""
+                                    sec > 59 -> "59"
+                                    else -> digits.padStart(2, '0')
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            label = { Text("Sec") },
+                            placeholder = { Text("00") }
+                        )
+                    }
                 }
 
                 Row(
@@ -142,14 +169,58 @@ fun SessionCreationScreen(
                 }
 
                 if (enforceCheckinLimit) {
-                    Text("Check-in window (seconds)", style = MaterialTheme.typography.labelMedium)
-                    OutlinedTextField(
-                        value = checkinWindowSeconds,
-                        onValueChange = { checkinWindowSeconds = it.filter(Char::isDigit) },
+                    Text("Check-in window", style = MaterialTheme.typography.labelMedium)
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        placeholder = { Text("60") }
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = checkinMinutes,
+                            onValueChange = { checkinMinutes = it.filter(Char::isDigit) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            label = { Text("Min") },
+                            placeholder = { Text("1") }
+                        )
+                        OutlinedTextField(
+                            value = checkinSeconds,
+                            onValueChange = {
+                                val digits = it.filter(Char::isDigit).take(2)
+                                val sec = digits.toIntOrNull()
+                                checkinSeconds = when {
+                                    digits.isEmpty() -> ""
+                                    sec == null -> ""
+                                    sec > 59 -> "59"
+                                    else -> digits.padStart(2, '0')
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            label = { Text("Sec") },
+                            placeholder = { Text("00") }
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Auto-start on NFC (idle only)", style = MaterialTheme.typography.titleSmall)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "Allow guests to start immediately when the station is\n" +
+                                "idle (no active session and an empty queue).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = autoJoinEnabled,
+                        onCheckedChange = { autoJoinEnabled = it }
                     )
                 }
 
@@ -185,22 +256,39 @@ fun SessionCreationScreen(
 
             DraftAndPublishButtons(
                 enabled = stationName.isNotBlank() &&
-                        (mode != StationMode.Timed || durationMinutes.toIntOrNull() != null) &&
-                        (!enforceCheckinLimit || checkinWindowSeconds.toIntOrNull() != null),
+                        (mode != StationMode.Timed || run {
+                            val total =
+                                (durationMinutes.toIntOrNull() ?: 0) * 60 +
+                                    (durationSeconds.toIntOrNull() ?: 0)
+                            total > 0
+                        }) &&
+                        (!enforceCheckinLimit || run {
+                            val total =
+                                (checkinMinutes.toIntOrNull() ?: 0) * 60 +
+                                    (checkinSeconds.toIntOrNull() ?: 0)
+                            total > 0
+                        }),
                 onSaveDraft = {
                     // TODO: save draft logic
                     navController.navigate(Screen.MyStations.route)
                 },
                 onPublish = {
                     scope.launch {
+                        val durationTotalSeconds =
+                            (durationMinutes.toIntOrNull() ?: 0) * 60 +
+                                (durationSeconds.toIntOrNull() ?: 0)
+                        val checkinTotalSeconds =
+                            (checkinMinutes.toIntOrNull() ?: 0) * 60 +
+                                (checkinSeconds.toIntOrNull() ?: 0)
                         val newStation = Station(
                             name = stationName,
                             ownerId = userId,
                             mode = mode.toString().lowercase(),
                             isActive = state == StationState.Active,
-                            sessionDurationSeconds = (durationMinutes.toIntOrNull() ?: 0) * 60,
+                            sessionDurationSeconds = durationTotalSeconds,
+                            autoJoinEnabled = autoJoinEnabled,
                             enforceCheckinLimit = enforceCheckinLimit,
-                            checkinWindowSeconds = checkinWindowSeconds.toIntOrNull() ?: 60
+                            checkinWindowSeconds = checkinTotalSeconds.coerceAtLeast(1)
                         )
                         repository.setStation(newStation)
                         navController.navigate(Screen.MyStations.route)

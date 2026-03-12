@@ -28,6 +28,7 @@ export interface Station {
   isActive: boolean;
   mode?: string;
   sessionDurationSeconds?: number;
+  autoJoinEnabled?: boolean;
   enforceCheckinLimit?: boolean;
   checkinWindowSeconds?: number;
   attendees: Record<string, Attendee>;

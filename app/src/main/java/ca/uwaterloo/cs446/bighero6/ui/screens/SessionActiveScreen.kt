@@ -47,9 +47,21 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
 
             // Idle or head of queue: try to start session. One transaction wins; if we lose, join queue.
             station.currentSession == null && (station.attendees.isEmpty() || station.isAtPositionOne(userId)) -> {
-                if (station.attendees.isEmpty()) {
+                val isIdle = station.attendees.isEmpty()
+                if (isIdle && !station.autoJoinEnabled) {
+                    // Auto-join is disabled: an NFC tap on an idle station should NOT
+                    // immediately start a session. Show the info screen instead.
+                    navController.popBackStack()
+                    navController.navigate(
+                        Screen.StationInfo("").createRoute(stationId, autoStart = false)
+                    )
+                    return@LaunchedEffect
+                }
+
+                if (isIdle) {
                     repository.addToWaitlist(stationId, userId)
                 }
+
                 val startResult = repository.startSession(
                     stationId,
                     userId,
@@ -60,15 +72,25 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
                     viewModel.startSessionTimer(stationId)
                 } else {
                     ensureInQueueAndNavigateToStationInfo(
-                        stationId, userId, station, repository, navController
+                        stationId = stationId,
+                        userId = userId,
+                        station = station,
+                        repository = repository,
+                        navController = navController
                     )
                 }
             }
 
             // Not eligible to start (not at front): ensure in queue and show station info.
-            else -> ensureInQueueAndNavigateToStationInfo(
-                stationId, userId, station, repository, navController
-            )
+            else -> {
+                // Important: NFC tap should NOT implicitly join the queue when a session
+                // is active (or when the user isn't otherwise starting). Require explicit
+                // "Join Waitlist" on StationInfoScreen.
+                navController.popBackStack()
+                navController.navigate(
+                    Screen.StationInfo("").createRoute(stationId, autoStart = false)
+                )
+            }
         }
     }
 
