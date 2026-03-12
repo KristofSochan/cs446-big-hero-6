@@ -14,11 +14,13 @@ export interface CurrentSession {
   userId: string | null;
   startedAt: admin.firestore.Timestamp | null;
   expiresAt: admin.firestore.Timestamp | null;
+  sessionId?: string;
 }
 
 export interface CurrentReservation {
   userId: string;
   expiresAt: admin.firestore.Timestamp;
+  reservationId?: string;
 }
 
 export interface Station {

@@ -13,6 +13,7 @@ import {onTaskDispatched} from "firebase-functions/v2/tasks";
 import {getFunctions} from "firebase-admin/functions";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
+import {randomUUID} from "crypto";
 import {Station as StationDoc, Attendee} from "./types";
 
 // Initialize Firebase Admin
@@ -59,6 +60,7 @@ export const onStationUpdate = onDocumentUpdated(
       const durationSec = after.sessionDurationSeconds ?? 900;
       const update: Record<string, unknown> = {
         "currentSession.startedAt": now,
+        "currentSession.sessionId": randomUUID(),
       };
       if (isTimed) {
         update["currentSession.expiresAt"] = new admin.firestore.Timestamp(
@@ -76,7 +78,22 @@ export const onStationUpdate = onDocumentUpdated(
       logger.info(
         `Session started for station ${stationId}, scheduling expiration`,
       );
-      await scheduleSessionExpiration(stationId, afterSession.expiresAt);
+      const sessionId =
+        typeof afterSession.sessionId === "string" ?
+          afterSession.sessionId :
+          null;
+      if (!sessionId) {
+        logger.error(
+          `No currentSession.sessionId present for station ${stationId}; ` +
+            "cannot schedule expireSession safely",
+        );
+        return;
+      }
+      await scheduleSessionExpiration(
+        stationId,
+        afterSession.expiresAt,
+        sessionId,
+      );
     }
 
     // Case 2: Session was cleared (expired or ended) - notify next person
@@ -92,10 +109,12 @@ export const onStationUpdate = onDocumentUpdated(
  * Schedules a Cloud Task to expire a session at the specified time
  * @param {string} stationId - The station ID
  * @param {admin.firestore.Timestamp} expiresAt - When the session expires
+ * @param {string} sessionId - The session id to expire
  */
 async function scheduleSessionExpiration(
   stationId: string,
   expiresAt: admin.firestore.Timestamp,
+  sessionId: string,
 ) {
   try {
     const queue = getFunctions().taskQueue(
@@ -106,7 +125,7 @@ async function scheduleSessionExpiration(
     const scheduleTime = expiresAt.toDate();
 
     await queue.enqueue(
-      {stationId},
+      {stationId, sessionId},
       {
         scheduleTime: scheduleTime,
         dispatchDeadlineSeconds: 60 * 5, // 5 minutes max
@@ -203,25 +222,29 @@ async function advanceQueue(
     now.seconds + checkinWindowSeconds,
     now.nanoseconds,
   );
+  const reservationId = randomUUID();
 
   await stationRef.update({
     currentReservation: {
       userId: nextUserId,
       expiresAt,
+      reservationId,
     },
   });
 
-  await scheduleReservationExpiration(stationId, expiresAt);
+  await scheduleReservationExpiration(stationId, expiresAt, reservationId);
 }
 
 /**
  * Schedules a Cloud Task to expire a reservation at the specified time.
  * @param {string} stationId - The station ID
  * @param {admin.firestore.Timestamp} expiresAt - When the reservation expires
+ * @param {string} reservationId - The reservation id to expire
  */
 async function scheduleReservationExpiration(
   stationId: string,
   expiresAt: admin.firestore.Timestamp,
+  reservationId: string,
 ) {
   try {
     const queue = getFunctions().taskQueue(
@@ -232,7 +255,7 @@ async function scheduleReservationExpiration(
     const scheduleTime = expiresAt.toDate();
 
     await queue.enqueue(
-      {stationId},
+      {stationId, reservationId},
       {
         scheduleTime,
         dispatchDeadlineSeconds: 60 * 5,
@@ -323,7 +346,10 @@ export const getSessionTime = onCall({region: REGION}, async (request) => {
   const expiresAt = session?.expiresAt;
   const serverNow = admin.firestore.Timestamp.now();
   if (!expiresAt) {
-    return {expiresAtMillis: null, serverTimeMillis: serverNow.toMillis()};
+    return {
+      expiresAtMillis: null,
+      serverTimeMillis: serverNow.toMillis(),
+    };
   }
   return {
     expiresAtMillis: expiresAt.toMillis(),
@@ -381,7 +407,10 @@ export const expireSession = onTaskDispatched(
     },
   },
   async (req) => {
-    const {stationId} = req.data as { stationId: string };
+    const {stationId, sessionId} = req.data as {
+      stationId: string;
+      sessionId?: string;
+    };
     const db = admin.firestore();
 
     try {
@@ -405,20 +434,58 @@ export const expireSession = onTaskDispatched(
         return;
       }
 
-      const now = admin.firestore.Timestamp.now();
-      if (currentSession.expiresAt.toMillis() > now.toMillis()) {
-        // Not expired yet (shouldn't happen, but handle gracefully)
-        const expiresAt = currentSession.expiresAt.toDate();
-        logger.warn(
-          `Session for station ${stationId} not yet expired ` +
-            `(expires at ${expiresAt})`,
-        );
+      const currentSessionId =
+        typeof currentSession.sessionId === "string" ?
+          currentSession.sessionId :
+          null;
+      if (sessionId && currentSessionId && currentSessionId !== sessionId) {
+        // Stale task from a previous session; ignore quietly.
         return;
       }
 
-      // Expire the session (onStationUpdate will trigger notification)
-      await stationRef.update({
-        currentSession: admin.firestore.FieldValue.delete(),
+      const now = admin.firestore.Timestamp.now();
+      if (currentSession.expiresAt.toMillis() > now.toMillis()) {
+        // Not expired yet. Can happen if this task is stale and a new session
+        // is active, or if Cloud Tasks dispatch ran slightly early.
+        return;
+      }
+
+      const sessionUserId =
+        typeof currentSession.userId === "string" ?
+          currentSession.userId :
+          null;
+
+      // Expire the session and clean up the user's waitlist entry.
+      await db.runTransaction(async (tx) => {
+        const latest = await tx.get(stationRef);
+        if (!latest.exists) return;
+
+        const latestSession = latest.data()?.currentSession;
+        if (!latestSession || !latestSession.expiresAt) return;
+        const latestSessionId =
+          typeof latestSession.sessionId === "string" ?
+            latestSession.sessionId :
+            null;
+        if (sessionId && latestSessionId && latestSessionId !== sessionId) {
+          return;
+        }
+        if (latestSession.expiresAt.toMillis() > now.toMillis()) return;
+
+        tx.update(stationRef, {
+          currentSession: admin.firestore.FieldValue.delete(),
+        });
+
+        const latestUserId =
+          typeof latestSession.userId === "string" ?
+            latestSession.userId :
+            null;
+        const userIdToUpdate = latestUserId ?? sessionUserId;
+        if (userIdToUpdate) {
+          const userRef = db.collection("users").doc(userIdToUpdate);
+          tx.update(userRef, {
+            currentWaitlists: admin.firestore.FieldValue.arrayRemove(stationId),
+          });
+        }
       });
 
       logger.info(`Expired session for station ${stationId}`);
@@ -446,7 +513,10 @@ export const expireReservation = onTaskDispatched(
     },
   },
   async (req) => {
-    const {stationId} = req.data as { stationId: string };
+    const {stationId, reservationId} = req.data as {
+      stationId: string;
+      reservationId?: string;
+    };
     const db = admin.firestore();
 
     try {
@@ -479,12 +549,23 @@ export const expireReservation = onTaskDispatched(
         return;
       }
 
+      const currentReservationId =
+        typeof reservation.reservationId === "string" ?
+          reservation.reservationId :
+          null;
+      if (
+        reservationId &&
+        currentReservationId &&
+        currentReservationId !== reservationId
+      ) {
+        // Stale task from a previous reservation; ignore quietly.
+        return;
+      }
+
       const now = admin.firestore.Timestamp.now();
       if (reservation.expiresAt.toMillis() > now.toMillis()) {
-        logger.warn(
-          `Reservation for station ${stationId} not yet expired ` +
-            `(expires at ${reservation.expiresAt.toDate()})`,
-        );
+        // Not expired yet. Can happen if this task is stale and the reservation
+        // was refreshed/replaced, or if Cloud Tasks dispatch ran early.
         return;
       }
 
@@ -502,6 +583,9 @@ export const expireReservation = onTaskDispatched(
 
         // Ensure we are still expiring the same reservation.
         if (
+          (reservationId &&
+            typeof currentReservation.reservationId === "string" &&
+            currentReservation.reservationId !== reservationId) ||
           currentReservation.userId !== reservation.userId ||
           currentReservation.expiresAt.toMillis() !==
             reservation.expiresAt.toMillis()
