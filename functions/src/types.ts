@@ -8,6 +8,7 @@ export interface Attendee {
   userId: string;
   status: "waiting" | "attending" | "removed";
   joinedAt: admin.firestore.Timestamp;
+  form?: Record<string, string>;
 }
 
 export interface CurrentSession {
@@ -15,6 +16,12 @@ export interface CurrentSession {
   startedAt: admin.firestore.Timestamp | null;
   expiresAt: admin.firestore.Timestamp | null;
   sessionId?: string;
+}
+
+export interface JoinFormField {
+  key: string;
+  label: string;
+  required?: boolean;
 }
 
 export interface CurrentReservation {
@@ -29,6 +36,8 @@ export interface Station {
   mode?: string;
   sessionDurationSeconds?: number;
   autoJoinEnabled?: boolean;
+  operatorManagesSessionsOnly?: boolean;
+  joinFormFields?: JoinFormField[];
   enforceCheckinLimit?: boolean;
   checkinWindowSeconds?: number;
   attendees: Record<string, Attendee>;

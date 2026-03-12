@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import ca.uwaterloo.cs446.bighero6.data.JoinFormField
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import kotlinx.coroutines.launch
 
@@ -35,9 +37,11 @@ fun SessionEditorScreen(
     var durationMinutes by remember { mutableStateOf("15") }
     var durationSeconds by remember { mutableStateOf("00") }
     var autoJoinEnabled by remember { mutableStateOf(true) }
+    var operatorManagesSessionsOnly by remember { mutableStateOf(false) }
     var enforceCheckinLimit by remember { mutableStateOf(false) }
     var checkinMinutes by remember { mutableStateOf("1") }
     var checkinSeconds by remember { mutableStateOf("00") }
+    val joinFormFields = remember { mutableStateListOf<JoinFormField>() }
 
     var isLoading by remember { mutableStateOf(true) }
     val repository = remember { FirestoreRepository() }
@@ -53,9 +57,12 @@ fun SessionEditorScreen(
             durationMinutes = (station.sessionDurationSeconds / 60).toString()
             durationSeconds = (station.sessionDurationSeconds % 60).toString().padStart(2, '0')
             autoJoinEnabled = station.autoJoinEnabled
+            operatorManagesSessionsOnly = station.operatorManagesSessionsOnly
             enforceCheckinLimit = station.enforceCheckinLimit
             checkinMinutes = (station.checkinWindowSeconds / 60).toString()
             checkinSeconds = (station.checkinWindowSeconds % 60).toString().padStart(2, '0')
+            joinFormFields.clear()
+            joinFormFields.addAll(station.joinFormFields)
             isLoading = false
         }
     }
@@ -224,7 +231,7 @@ fun SessionEditorScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Auto-start on NFC (idle only)", style = MaterialTheme.typography.titleSmall)
+                            Text("Auto-start on NFC tap (idle only)", style = MaterialTheme.typography.titleSmall)
                             Spacer(Modifier.height(2.dp))
                             Text(
                                 "Allow guests to start immediately when the station is\n" +
@@ -235,8 +242,99 @@ fun SessionEditorScreen(
                         }
                         Switch(
                             checked = autoJoinEnabled,
-                            onCheckedChange = { autoJoinEnabled = it }
+                            onCheckedChange = {
+                                if (!operatorManagesSessionsOnly) autoJoinEnabled = it
+                            },
+                            enabled = !operatorManagesSessionsOnly
                         )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Only operator can manages sessions", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "Guests cannot start or end sessions. Operators seat guests from queue management.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = operatorManagesSessionsOnly,
+                            onCheckedChange = {
+                                operatorManagesSessionsOnly = it
+                                if (it) autoJoinEnabled = false
+                            }
+                        )
+                    }
+
+                    Text("Join form fields", style = MaterialTheme.typography.titleMedium)
+                    if (joinFormFields.isEmpty()) {
+                        Text(
+                            "No fields (guests can join without entering details).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        joinFormFields.forEachIndexed { index, field ->
+                            Card(modifier = Modifier.fillMaxWidth()) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = field.label,
+                                        onValueChange = { label ->
+                                            joinFormFields[index] = field.copy(label = label)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        label = { Text("Label") }
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Checkbox(
+                                                checked = field.required,
+                                                onCheckedChange = { required ->
+                                                    joinFormFields[index] = field.copy(
+                                                        required = required
+                                                    )
+                                                }
+                                            )
+                                            Text("Required")
+                                        }
+                                        IconButton(onClick = { joinFormFields.removeAt(index) }) {
+                                            Icon(
+                                                Icons.Filled.Delete,
+                                                contentDescription = "Remove field"
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    TextButton(
+                        onClick = {
+                            joinFormFields.add(
+                                JoinFormField(
+                                    key = "",
+                                    label = "",
+                                    required = false
+                                )
+                            )
+                        }
+                    ) {
+                        Text("Add field")
                     }
 
                     Text("Current State", style = MaterialTheme.typography.titleMedium)
@@ -286,6 +384,8 @@ fun SessionEditorScreen(
                                     isActive = state == EditorStationState.Active,
                                     sessionDurationSeconds = durationTotalSeconds,
                                     autoJoinEnabled = autoJoinEnabled,
+                                    operatorManagesSessionsOnly = operatorManagesSessionsOnly,
+                                    joinFormFields = normalizeJoinFormFields(joinFormFields.toList()),
                                     enforceCheckinLimit = enforceCheckinLimit,
                                     checkinWindowSeconds = checkinTotalSeconds.coerceAtLeast(1)
                                 )
@@ -311,5 +411,28 @@ fun SessionEditorScreen(
                 }
             }
         }
+    }
+}
+
+private fun normalizeJoinFormFields(
+    fields: List<JoinFormField>
+): List<JoinFormField> {
+    val usedKeys = mutableSetOf<String>()
+    return fields.mapIndexed { index, field ->
+        val base = field.label.trim().lowercase()
+        var key = base
+            .replace("\\s+".toRegex(), "_")
+            .replace("[^a-z0-9_]".toRegex(), "")
+        if (key.isBlank()) {
+            key = "field${index + 1}"
+        }
+        var uniqueKey = key
+        var suffix = 2
+        while (usedKeys.contains(uniqueKey)) {
+            uniqueKey = "${key}_$suffix"
+            suffix++
+        }
+        usedKeys.add(uniqueKey)
+        field.copy(key = uniqueKey)
     }
 }

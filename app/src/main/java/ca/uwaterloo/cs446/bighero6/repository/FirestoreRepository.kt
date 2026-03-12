@@ -187,15 +187,22 @@ class FirestoreRepository {
      * Add user to waitlist (transaction-safe).
      * Attendees stored as map keyed by userId; joinedAt uses server timestamp.
      */
-    suspend fun addToWaitlist(stationId: String, userId: String): Result<Unit> {
+    suspend fun addToWaitlist(
+        stationId: String,
+        userId: String,
+        form: Map<String, String> = emptyMap()
+    ): Result<Unit> {
         return try {
             db.runTransaction { transaction ->
                 val stationRef = db.collection("stations").document(stationId)
-                val newAttendee = mapOf(
+                val newAttendee = mutableMapOf(
                     "userId" to userId,
                     "status" to "waiting",
                     "joinedAt" to FieldValue.serverTimestamp()
                 )
+                if (form.isNotEmpty()) {
+                    newAttendee["form"] = form
+                }
                 transaction.update(stationRef, "attendees.$userId", newAttendee)
                 val userRef = db.collection("users").document(userId)
                 transaction.update(userRef, "currentWaitlists", FieldValue.arrayUnion(stationId))
@@ -299,34 +306,58 @@ class FirestoreRepository {
         mode: String = "manual"
     ): Result<Unit> {
         return try {
-            // Get current station to find user entry
-            val station = getStation(stationId) ?: return Result.failure(
-                IllegalStateException("Station not found")
-            )
-
-            db.runTransaction { transaction ->
-                val stationRef = db.collection("stations").document(stationId)
-                val currentStation = transaction.get(stationRef).toObject(Station::class.java)
-
-                // Check if current session exists and is expired (timed only)
-                val currentSession = currentStation?.currentSession
-                val now = Timestamp.now()
-                if (currentSession?.expiresAt != null &&
-                    currentSession.expiresAt.seconds * 1000 < now.seconds * 1000) {
-                    transaction.update(stationRef, "currentSession", null)
-                } else if (currentSession != null) {
-                    throw IllegalStateException("Station is currently in use")
-                }
-
-                // Cloud Function sets startedAt and expiresAt from server time
-                transaction.update(stationRef, "currentSession", mapOf("userId" to userId))
-                transaction.update(stationRef, "attendees.$userId", FieldValue.delete())
-            }.await()
-
+            applyStartSessionTx(stationId = stationId, userIdToSeat = userId)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /**
+     * Operator-driven session start (seating). Uses the same transaction as guest start,
+     * but is exposed separately so UI/policy can differ.
+     */
+    suspend fun startSessionAsOperator(stationId: String, userIdToSeat: String): Result<Unit> {
+        return try {
+            applyStartSessionTx(stationId = stationId, userIdToSeat = userIdToSeat)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Shared transaction for starting a session for a specific user.
+     * - Clears an expired timed session, if present
+     * - Throws if a non-expired session is currently active
+     * - Sets currentSession.userId; Cloud Function sets startedAt/expiresAt
+     * - Removes the user from attendees
+     * - Consumes currentReservation if it matches the same user
+     */
+    private suspend fun applyStartSessionTx(stationId: String, userIdToSeat: String) {
+        db.runTransaction { transaction ->
+            val stationRef = db.collection("stations").document(stationId)
+            val currentStation = transaction.get(stationRef).toObject(Station::class.java)
+                ?: throw IllegalStateException("Station not found")
+
+            val currentSession = currentStation.currentSession
+            val now = Timestamp.now()
+            if (currentSession?.expiresAt != null &&
+                currentSession.expiresAt.seconds * 1000 < now.seconds * 1000
+            ) {
+                transaction.update(stationRef, "currentSession", null)
+            } else if (currentSession != null) {
+                throw IllegalStateException("Station is currently in use")
+            }
+
+            transaction.update(stationRef, "currentSession", mapOf("userId" to userIdToSeat))
+            transaction.update(stationRef, "attendees.$userIdToSeat", FieldValue.delete())
+
+            val reservationUserId = currentStation.currentReservation?.userId
+            if (reservationUserId == userIdToSeat) {
+                transaction.update(stationRef, "currentReservation", FieldValue.delete())
+            }
+        }.await()
     }
     
     /**

@@ -49,11 +49,12 @@ fun MyWaitlistsScreen(
             Text("My Waitlists", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 8.dp))
             
             if (SHOW_SIMULATE_NFC_BUTTON) {
+                val HARD_CODED_TEST_STATION_ID = "91a7360c-1a1b-4948-af0d-e679ab41805b"
                 Button(
                     onClick = {
                         navController.navigate(
                             Screen.StationInfo("").createRoute(
-                                "91a7360c-1a1b-4948-af0d-e679ab41805b",
+                                HARD_CODED_TEST_STATION_ID,
                                 autoStart = true
                             )
                         )
@@ -119,7 +120,7 @@ fun MyWaitlistsScreen(
                                     waitlist.position == 1 && !waitlist.hasActiveSession -> {
                                         Text("Your turn", fontWeight = FontWeight.SemiBold)
                                         Text(
-                                            "Go to the machine and tap the NFC tag to start your session.",
+                                            "Go to the station to start your session.",
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.padding(top = 8.dp)

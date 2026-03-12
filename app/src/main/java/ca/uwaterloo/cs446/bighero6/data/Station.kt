@@ -6,6 +6,13 @@ import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.ServerTimestamp
 
 @IgnoreExtraProperties
+data class JoinFormField(
+    val key: String = "",
+    val label: String = "",
+    val required: Boolean = false
+)
+
+@IgnoreExtraProperties
 data class Station(
     val id: String = "",
     val ownerId: String = "",
@@ -22,6 +29,13 @@ data class Station(
      * (no active session and no waiting attendees).
      */
     val autoJoinEnabled: Boolean = true,
+    /**
+     * If enabled, guests cannot start or end sessions; operators manage seating.
+     * (Used for manned waitlists like restaurants.)
+     */
+    val operatorManagesSessionsOnly: Boolean = false,
+    /** Dynamic fields required/optional when joining the waitlist. */
+    val joinFormFields: List<JoinFormField> = emptyList(),
     val enforceCheckinLimit: Boolean = false,
     /** Check-in window in seconds (how long the head of queue has to start). */
     val checkinWindowSeconds: Int = 60,

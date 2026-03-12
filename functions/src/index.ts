@@ -157,6 +157,10 @@ export const onStationUpdate = onDocumentUpdated(
         "currentSession.startedAt": now,
         "currentSession.sessionId": randomUUID(),
       };
+      // If a check-in reservation exists for the same user, consume it.
+      if (after.currentReservation?.userId === afterSession.userId) {
+        update["currentReservation"] = admin.firestore.FieldValue.delete();
+      }
       if (isTimed) {
         update["currentSession.expiresAt"] = new admin.firestore.Timestamp(
           now.seconds + durationSec,
@@ -334,7 +338,12 @@ async function advanceQueue(
   // (excludes check-in delay).
   await incrementQueueWaitAnalytics(stationId, now, queueWaitSeconds);
 
-  await notifyUserAtPositionOne(nextUserId, stationId, station.name);
+  await notifyUserAtPositionOne(
+    nextUserId,
+    stationId,
+    station.name,
+    station.operatorManagesSessionsOnly ?? false,
+  );
 
   if (!station.enforceCheckinLimit) {
     // No check-in window enforcement; nothing more to do.
@@ -414,11 +423,13 @@ async function scheduleReservationExpiration(
  * @param {string} userId - The user ID
  * @param {string} stationId - The station ID
  * @param {string} stationName - The station name
+ * @param {boolean} operatorManagesSessionsOnly - Whether guests can start/end.
  */
 async function notifyUserAtPositionOne(
   userId: string,
   stationId: string,
   stationName: string,
+  operatorManagesSessionsOnly: boolean,
 ) {
   try {
     // Get user's FCM token
@@ -440,12 +451,14 @@ async function notifyUserAtPositionOne(
     }
 
     // Send notification
+    const body = operatorManagesSessionsOnly ?
+      `You're next in line for ${stationName}. ` +
+        "Please return to the host stand to be seated." :
+      `You're next in line for ${stationName}. ` + "Tap the NFC tag to start.";
     const message = {
       notification: {
         title: "It's Your Turn!",
-        body:
-          `You're next in line for ${stationName}. ` +
-          "Tap the NFC tag to start.",
+        body,
       },
       data: {
         stationId: stationId,

@@ -44,6 +44,9 @@ fun StationInfoScreen(
     var isLeaving by remember { mutableStateOf(false) }
     var initialEligibility by remember(stationId) { mutableStateOf<InitialEligibility?>(null) }
     var didAutoNavigate by remember(stationId) { mutableStateOf(false) }
+    var didNavigateToSession by remember(stationId) { mutableStateOf(false) }
+    var showJoinDialog by remember(stationId) { mutableStateOf(false) }
+    val joinFormValues = remember(stationId) { mutableStateMapOf<String, String>() }
 
     LaunchedEffect(Unit) {
         homeViewModel.subscribeToWaitlists(context)
@@ -74,6 +77,7 @@ fun StationInfoScreen(
                     autoStart &&
                         (initialEligibility?.isIdle == true) &&
                         (initialEligibility?.autoJoinEnabled == true) &&
+                        !station.operatorManagesSessionsOnly &&
                         isIdleStation
 
                 // Capture eligibility only on first successful load (so we don't react to later updates).
@@ -86,7 +90,7 @@ fun StationInfoScreen(
                         isFirstInLineWithNoSession = s.currentSession == null &&
                             uid in s.attendees && s.calculatePosition(uid) == 1,
                         isMySessionActive = s.currentSession?.userId == uid,
-                        autoJoinEnabled = s.autoJoinEnabled
+                        autoJoinEnabled = s.autoJoinEnabled && !s.operatorManagesSessionsOnly
                     )
                 }
 
@@ -100,6 +104,16 @@ fun StationInfoScreen(
                             e.isFirstInLineWithNoSession
                     if (shouldAutoStart) {
                         didAutoNavigate = true
+                        navController.navigate(Screen.SessionActive("").createRoute(stationId))
+                    }
+                }
+
+                // Reactive navigate: if the operator starts my session while I'm viewing
+                // this station, jump to the active session screen immediately.
+                LaunchedEffect(stationId, isMySessionActive, didNavigateToSession) {
+                    if (didNavigateToSession) return@LaunchedEffect
+                    if (isMySessionActive) {
+                        didNavigateToSession = true
                         navController.navigate(Screen.SessionActive("").createRoute(stationId))
                     }
                 }
@@ -132,11 +146,23 @@ fun StationInfoScreen(
                     showIdleAutoJoinFlow -> // this is likely never seen since in the auto join flow the user goes straigh to Session (timer) view
                         "No one is waiting. Your session will begin immediately."
                     isFirstInLine && !hasActiveSession ->
-                        "Your turn! Go to the machine and tap the NFC tag to start your session."
+                        if (station.operatorManagesSessionsOnly) {
+                            "Your turn! Please return to the host stand to be seated."
+                        } else {
+                            "Your turn! Go to the machine and tap the NFC tag to start your session."
+                        }
                     isFirstInLine && hasActiveSession ->
-                        "You will be notified when the station is ready."
+                        if (station.operatorManagesSessionsOnly) {
+                            "You will be notified when your table is ready."
+                        } else {
+                            "You will be notified when the station is ready."
+                        }
                     isIdleStation && station.autoJoinEnabled ->
-                        "Station is available. Tap the NFC tag at the machine to start."
+                        if (station.operatorManagesSessionsOnly) {
+                            null
+                        } else {
+                            "Station is available. Tap the NFC tag at the machine to start."
+                        }
                     else -> null
                 }
 
@@ -184,6 +210,27 @@ fun StationInfoScreen(
                         )
                         CircularProgressIndicator()
                     }
+                    isMySessionActive -> {
+                        Button(
+                            onClick = {
+                                navController.navigate(
+                                    Screen.SessionActive("").createRoute(stationId)
+                                )
+                            },
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        ) {
+                            Text("View Session")
+                        }
+                        TextButton(
+                            onClick = {
+                                navController.navigate(Screen.MyWaitlists.route) {
+                                    popUpTo(Screen.MyWaitlists.route) { inclusive = false }
+                                }
+                            }
+                        ) {
+                            Text("Back to My Waitlists")
+                        }
+                    }
                     showIdleAutoJoinFlow -> {
                         // Empty queue, no active session: "Machine Available" flow
                         val durationMinutes = station.sessionDurationSeconds / 60
@@ -229,6 +276,24 @@ fun StationInfoScreen(
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
+
+                        if (station.mode == "timed" && position > 0) {
+                            val perPartySeconds = station.sessionDurationSeconds +
+                                (if (station.enforceCheckinLimit) station.checkinWindowSeconds else 0)
+                            val estimateSeconds = (position - 1) * perPartySeconds
+                            val estimateMinutes = (estimateSeconds / 60).coerceAtLeast(0)
+                            val estimateText = when {
+                                estimateMinutes <= 0 -> "Estimated wait: < 1 min"
+                                else -> "Estimated wait: ~${estimateMinutes} min"
+                            }
+                            Text(
+                                estimateText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
                         
                         Button(
                             onClick = { 
@@ -258,7 +323,16 @@ fun StationInfoScreen(
                         Button(
                             onClick = { 
                                 isLeaving = false
-                                viewModel.joinWaitlist(stationId, context) 
+                                if (station.joinFormFields.isNotEmpty()) {
+                                    station.joinFormFields.forEach { field ->
+                                        if (!joinFormValues.containsKey(field.key)) {
+                                            joinFormValues[field.key] = ""
+                                        }
+                                    }
+                                    showJoinDialog = true
+                                } else {
+                                    viewModel.joinWaitlist(stationId, context)
+                                }
                             },
                             modifier = Modifier.padding(bottom = 8.dp)
                         ) {
@@ -274,6 +348,56 @@ fun StationInfoScreen(
                             Text("Back to My Waitlists")
                         }
                     }
+                }
+
+                if (showJoinDialog) {
+                    val canSubmit = station.joinFormFields.all { field ->
+                        !field.required || (joinFormValues[field.key]?.isNotBlank() == true)
+                    }
+                    AlertDialog(
+                        onDismissRequest = { showJoinDialog = false },
+                        title = { Text("Join waitlist") },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                station.joinFormFields.forEach { field ->
+                                    OutlinedTextField(
+                                        value = joinFormValues[field.key] ?: "",
+                                        onValueChange = { joinFormValues[field.key] = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        label = {
+                                            Text(
+                                                if (field.required) {
+                                                    "${field.label} *"
+                                                } else {
+                                                    field.label
+                                                }
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                enabled = canSubmit,
+                                onClick = {
+                                    val form = joinFormValues
+                                        .toMap()
+                                        .filterValues { it.isNotBlank() }
+                                    viewModel.joinWaitlist(stationId, context, form)
+                                    showJoinDialog = false
+                                }
+                            ) {
+                                Text("Join")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showJoinDialog = false }) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
                 }
                 
                 // Navigate on success (join/leave waitlist only; session start is on SessionActiveScreen)
