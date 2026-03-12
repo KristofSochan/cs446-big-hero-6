@@ -8,6 +8,7 @@ import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
 import com.google.firebase.functions.FirebaseFunctions
 import kotlinx.coroutines.tasks.await
 import java.util.Date
@@ -160,7 +161,7 @@ class FirestoreRepository {
             var query = db.collection("stationAnalytics")
                 .document(stationId)
                 .collection("daily")
-                .orderBy(FieldPath.documentId())
+                .orderBy(FieldPath.documentId(), Query.Direction.DESCENDING)
 
             if (days != null) {
                 query = query.limit(days.toLong())
@@ -174,7 +175,7 @@ class FirestoreRepository {
                     totalWaitTimeSeconds = (doc.getLong("totalWaitTimeSeconds") ?: 0L),
                     totalNoShows = (doc.getLong("totalNoShows") ?: 0L)
                 )
-            }.sortedByDescending { it.dayKey }
+            }
 
             Result.success(items)
         } catch (e: Exception) {
