@@ -263,6 +263,21 @@ fun QueueManagementScreen(
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
+                                            val form = attendee.form
+                                            if (form.isNotEmpty()) {
+                                                Spacer(Modifier.height(4.dp))
+                                                val labelByKey = station!!.joinFormFields.associateBy({ it.key }, { it.label })
+                                                form.forEach { (key, value) ->
+                                                    if (value.isNotBlank()) {
+                                                        val label = labelByKey[key].takeUnless { it.isNullOrBlank() } ?: key
+                                                        Text(
+                                                            text = "$label: $value",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                         
                                         Row(verticalAlignment = Alignment.CenterVertically) {
