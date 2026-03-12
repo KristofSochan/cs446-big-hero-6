@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,8 +27,9 @@ fun StationAnalyticsScreen(
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var daily by remember { mutableStateOf<List<StationAnalyticsDaily>>(emptyList()) }
+    var refreshKey by remember { mutableStateOf(0) }
 
-    LaunchedEffect(stationId) {
+    LaunchedEffect(stationId, refreshKey) {
         isLoading = true
         error = null
         val result = repository.getStationAnalyticsDaily(stationId, days = 30)
@@ -65,6 +67,19 @@ fun StationAnalyticsScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back"
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            refreshKey++
+                        },
+                        enabled = !isLoading
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Refresh analytics"
                         )
                     }
                 }

@@ -134,15 +134,6 @@ export const onStationUpdate = onDocumentUpdated(
     // Case 0: New session (userId only). Set startedAt/expiresAt from server.
     if (afterSession?.userId && !afterSession.startedAt) {
       const now = admin.firestore.Timestamp.now();
-      const userId = afterSession.userId;
-      const joinedAt = before.attendees?.[userId]?.joinedAt;
-      const waitSeconds =
-        joinedAt ?
-          Math.max(
-            0,
-            Math.floor((now.toMillis() - joinedAt.toMillis()) / 1000),
-          ) :
-          null;
       const isTimed = after.mode === "timed";
       const durationSec = after.sessionDurationSeconds ?? 900;
       const update: Record<string, unknown> = {
@@ -157,14 +148,6 @@ export const onStationUpdate = onDocumentUpdated(
       }
       const docRef = event.data?.after?.ref;
       if (docRef) await docRef.update(update);
-      if (waitSeconds != null) {
-        await incrementSessionAnalytics(stationId, now, waitSeconds);
-      } else {
-        logger.warn(
-          `Missing joinedAt for user ${userId} on station ${stationId}; ` +
-            "skipping wait time analytics",
-        );
-      }
       return;
     }
 
@@ -298,6 +281,16 @@ async function advanceQueue(
   }
 
   const nextUserId = waitingAttendees[0].userId;
+  const now = admin.firestore.Timestamp.now();
+  const joinedAt = waitingAttendees[0].joinedAt;
+  const queueWaitSeconds = Math.max(
+    0,
+    Math.floor((now.toMillis() - joinedAt.toMillis()) / 1000),
+  );
+
+  // Analytics: "queue wait" is time until it's your turn
+  // (excludes check-in delay).
+  await incrementSessionAnalytics(stationId, now, queueWaitSeconds);
 
   await notifyUserAtPositionOne(nextUserId, stationId, station.name);
 
@@ -317,7 +310,6 @@ async function advanceQueue(
   }
 
   const checkinWindowSeconds = station.checkinWindowSeconds ?? 60;
-  const now = admin.firestore.Timestamp.now();
   const expiresAt = new admin.firestore.Timestamp(
     now.seconds + checkinWindowSeconds,
     now.nanoseconds,
