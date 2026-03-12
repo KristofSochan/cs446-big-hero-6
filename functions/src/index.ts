@@ -203,6 +203,30 @@ export const onStationUpdate = onDocumentUpdated(
 
       await advanceQueue(stationId, after);
     }
+
+    // Case 3: Station is idle and the queue became non-empty.
+    // This enforces check-in windows for the first person in line, even when
+    // they joined while the station was idle (no session to clear).
+    if (!afterSession) {
+      const beforeWaitingCount = Object.values(before.attendees || {}).filter(
+        (a) => a.status === "waiting",
+      ).length;
+      const afterWaitingCount = Object.values(after.attendees || {}).filter(
+        (a) => a.status === "waiting",
+      ).length;
+
+      const queueBecameNonEmpty =
+        beforeWaitingCount === 0 && afterWaitingCount > 0;
+      const noReservation = !after.currentReservation;
+
+      if (queueBecameNonEmpty && noReservation) {
+        logger.info(
+          `Queue became non-empty for idle station ${stationId}; ` +
+            "advancing queue",
+        );
+        await advanceQueue(stationId, after);
+      }
+    }
   },
 );
 

@@ -22,7 +22,8 @@ import ca.uwaterloo.cs446.bighero6.viewmodel.StationViewModel
 private data class InitialEligibility(
     val isIdle: Boolean,
     val isFirstInLineWithNoSession: Boolean,
-    val isMySessionActive: Boolean
+    val isMySessionActive: Boolean,
+    val autoJoinEnabled: Boolean
 )
 
 /**
@@ -69,6 +70,11 @@ fun StationInfoScreen(
                 val isMySessionActive = station.currentSession?.userId == userId
                 val isFirstInLine = isInWaitlist && position == 1
                 val isIdleStation = peopleInLine == 0 && !hasActiveSession
+                val showIdleAutoJoinFlow =
+                    autoStart &&
+                        (initialEligibility?.isIdle == true) &&
+                        (initialEligibility?.autoJoinEnabled == true) &&
+                        isIdleStation
 
                 // Capture eligibility only on first successful load (so we don't react to later updates).
                 LaunchedEffect(stationId, stationState) {
@@ -79,7 +85,8 @@ fun StationInfoScreen(
                         isIdle = s.attendees.isEmpty() && s.currentSession == null,
                         isFirstInLineWithNoSession = s.currentSession == null &&
                             uid in s.attendees && s.calculatePosition(uid) == 1,
-                        isMySessionActive = s.currentSession?.userId == uid
+                        isMySessionActive = s.currentSession?.userId == uid,
+                        autoJoinEnabled = s.autoJoinEnabled
                     )
                 }
 
@@ -87,14 +94,18 @@ fun StationInfoScreen(
                 LaunchedEffect(stationId, initialEligibility, autoStart, didAutoNavigate) {
                     if (didAutoNavigate || initialEligibility == null || !autoStart) return@LaunchedEffect
                     val e = initialEligibility!!
-                    if (e.isMySessionActive || e.isIdle || e.isFirstInLineWithNoSession) {
+                    val shouldAutoStart =
+                        e.isMySessionActive ||
+                            (e.isIdle && e.autoJoinEnabled) ||
+                            e.isFirstInLineWithNoSession
+                    if (shouldAutoStart) {
                         didAutoNavigate = true
                         navController.navigate(Screen.SessionActive("").createRoute(stationId))
                     }
                 }
 
                 // Top section: title + station name
-                if (isIdleStation) {
+                if (showIdleAutoJoinFlow) {
                     Text(
                         "Machine Available",
                         style = MaterialTheme.typography.headlineMedium,
@@ -118,12 +129,14 @@ fun StationInfoScreen(
 
                 val statusText = when {
                     isMySessionActive -> "You're currently using this station"
-                    isIdleStation ->
+                    showIdleAutoJoinFlow -> // this is likely never seen since in the auto join flow the user goes straigh to Session (timer) view
                         "No one is waiting. Your session will begin immediately."
                     isFirstInLine && !hasActiveSession ->
                         "Your turn! Go to the machine and tap the NFC tag to start your session."
                     isFirstInLine && hasActiveSession ->
                         "You will be notified when the station is ready."
+                    isIdleStation && station.autoJoinEnabled ->
+                        "Station is available. Tap the NFC tag at the machine to start."
                     else -> null
                 }
 
@@ -171,7 +184,7 @@ fun StationInfoScreen(
                         )
                         CircularProgressIndicator()
                     }
-                    isIdleStation -> {
+                    showIdleAutoJoinFlow -> {
                         // Empty queue, no active session: "Machine Available" flow
                         val durationMinutes = station.sessionDurationSeconds / 60
                         val sessionInfo = if (station.mode == "timed") {

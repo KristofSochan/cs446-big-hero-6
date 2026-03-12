@@ -17,6 +17,11 @@ data class Station(
     
     val sessionDurationSeconds: Int = 900,
     val mode: String = "manual",
+    /**
+     * If enabled, an NFC tap can immediately start a session when the station is idle
+     * (no active session and no waiting attendees).
+     */
+    val autoJoinEnabled: Boolean = true,
     val enforceCheckinLimit: Boolean = false,
     /** Check-in window in seconds (how long the head of queue has to start). */
     val checkinWindowSeconds: Int = 60,
