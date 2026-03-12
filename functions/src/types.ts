@@ -23,6 +23,11 @@ export interface CurrentReservation {
   reservationId?: string;
 }
 
+export interface CurrentReservation {
+  userId: string;
+  expiresAt: admin.firestore.Timestamp;
+}
+
 export interface Station {
   name: string;
   isActive: boolean;
