@@ -251,6 +251,22 @@ class FirestoreRepository {
                     Timestamp.now()
                 }
                 transaction.update(stationRef, "attendees.$userId.joinedAt", newTimestamp)
+                val reservationUserId = station.currentReservation?.userId
+                if (reservationUserId != null) {
+                    // Determine the new head of the queue after the reorder.
+                    val updatedAttendees = station.attendees.toMutableMap()
+                    val current = updatedAttendees[userId]
+                    if (current != null) {
+                        updatedAttendees[userId] = current.copy(joinedAt = newTimestamp)
+                    }
+                    val newHeadUserId = updatedAttendees.values
+                        .minByOrNull { it.joinedAt }?.userId
+
+                    // Only clear reservation if the reserved user is no longer head.
+                    if (newHeadUserId != reservationUserId) {
+                        transaction.update(stationRef, "currentReservation", FieldValue.delete())
+                    }
+                }
             }.await()
             Result.success(Unit)
         } catch (e: Exception) {
@@ -275,6 +291,22 @@ class FirestoreRepository {
                     Timestamp.now()
                 }
                 transaction.update(stationRef, "attendees.$userId.joinedAt", newTimestamp)
+                val reservationUserId = station.currentReservation?.userId
+                if (reservationUserId != null) {
+                    // Determine the new head of the queue after the reorder.
+                    val updatedAttendees = station.attendees.toMutableMap()
+                    val current = updatedAttendees[userId]
+                    if (current != null) {
+                        updatedAttendees[userId] = current.copy(joinedAt = newTimestamp)
+                    }
+                    val newHeadUserId = updatedAttendees.values
+                        .minByOrNull { it.joinedAt }?.userId
+
+                    // Only clear reservation if the reserved user is no longer head.
+                    if (newHeadUserId != reservationUserId) {
+                        transaction.update(stationRef, "currentReservation", FieldValue.delete())
+                    }
+                }
             }.await()
             Result.success(Unit)
         } catch (e: Exception) {
