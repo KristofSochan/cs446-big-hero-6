@@ -4,6 +4,7 @@ import ca.uwaterloo.cs446.bighero6.data.Attendee
 import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.data.User
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -28,6 +29,13 @@ data class SessionTimeResult(val initialRemainingMs: Long?)
  * Result of getReservationTime callable: initial remaining ms for check-in countdown, or null.
  */
 data class ReservationTimeResult(val initialRemainingMs: Long?)
+
+data class StationAnalyticsDaily(
+    val dayKey: String,
+    val totalSessions: Long,
+    val totalWaitTimeSeconds: Long,
+    val totalNoShows: Long
+)
 
 class FirestoreRepository {
     private val db = FirebaseFirestore.getInstance()
@@ -138,6 +146,40 @@ class FirestoreRepository {
                 } ?: emptyList()
                 onUpdate(stations)
             }
+    }
+
+    /**
+     * Fetch daily analytics for a station (newest first).
+     * @param days Limit number of days to fetch. If null, fetch all.
+     */
+    suspend fun getStationAnalyticsDaily(
+        stationId: String,
+        days: Int? = 7
+    ): Result<List<StationAnalyticsDaily>> {
+        return try {
+            var query = db.collection("stationAnalytics")
+                .document(stationId)
+                .collection("daily")
+                .orderBy(FieldPath.documentId())
+
+            if (days != null) {
+                query = query.limit(days.toLong())
+            }
+
+            val snap = query.get().await()
+            val items = snap.documents.map { doc ->
+                StationAnalyticsDaily(
+                    dayKey = doc.id,
+                    totalSessions = (doc.getLong("totalSessions") ?: 0L),
+                    totalWaitTimeSeconds = (doc.getLong("totalWaitTimeSeconds") ?: 0L),
+                    totalNoShows = (doc.getLong("totalNoShows") ?: 0L)
+                )
+            }.sortedByDescending { it.dayKey }
+
+            Result.success(items)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
     
     /**

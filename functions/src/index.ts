@@ -37,6 +37,84 @@ setGlobalOptions({maxInstances: 10, region: REGION});
 import {onDocumentUpdated} from "firebase-functions/v2/firestore";
 
 /**
+ * Returns YYYY-MM-DD in UTC for analytics bucketing.
+ * @param {admin.firestore.Timestamp} ts - Timestamp to bucket.
+ * @return {string} The day key (UTC) in YYYY-MM-DD.
+ */
+function dateKeyUTC(ts: admin.firestore.Timestamp): string {
+  const d = ts.toDate();
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Returns `/stationAnalytics/{stationId}/daily/{yyyy-MM-dd}` doc ref.
+ * @param {string} stationId - Station id.
+ * @param {admin.firestore.Timestamp} ts - Timestamp to bucket.
+ * @return {admin.firestore.DocumentReference} Analytics doc ref.
+ */
+function stationDailyAnalyticsRef(
+  stationId: string,
+  ts: admin.firestore.Timestamp,
+) {
+  const dayKey = dateKeyUTC(ts);
+  return admin
+    .firestore()
+    .collection("stationAnalytics")
+    .doc(stationId)
+    .collection("daily")
+    .doc(dayKey);
+}
+
+/**
+ * Increment daily aggregates for a completed session start event.
+ * Stores only counts/sums (no user ids).
+ * @param {string} stationId - Station id.
+ * @param {admin.firestore.Timestamp} startedAt - Session start time.
+ * @param {number} waitSeconds - Wait time in seconds.
+ */
+async function incrementSessionAnalytics(
+  stationId: string,
+  startedAt: admin.firestore.Timestamp,
+  waitSeconds: number,
+): Promise<void> {
+  const ref = stationDailyAnalyticsRef(stationId, startedAt);
+  await ref.set(
+    {
+      totalSessions: admin.firestore.FieldValue.increment(1),
+      totalWaitTimeSeconds: admin.firestore.FieldValue.increment(waitSeconds),
+      totalNoShows: admin.firestore.FieldValue.increment(0),
+    },
+    {merge: true},
+  );
+}
+
+/**
+ * Transactional increment of daily no-show count.
+ * @param {admin.firestore.Transaction} tx - Firestore transaction.
+ * @param {string} stationId - Station id.
+ * @param {admin.firestore.Timestamp} ts - Timestamp to bucket.
+ */
+function analyticsIncrementNoShowTx(
+  tx: admin.firestore.Transaction,
+  stationId: string,
+  ts: admin.firestore.Timestamp,
+) {
+  const ref = stationDailyAnalyticsRef(stationId, ts);
+  tx.set(
+    ref,
+    {
+      totalSessions: admin.firestore.FieldValue.increment(0),
+      totalWaitTimeSeconds: admin.firestore.FieldValue.increment(0),
+      totalNoShows: admin.firestore.FieldValue.increment(1),
+    },
+    {merge: true},
+  );
+}
+
+/**
  * Triggered when a station document is updated
  * - When session starts: Enqueue Cloud Task to expire it at expiresAt time
  * - When session ends: Notify next person in line
@@ -56,6 +134,15 @@ export const onStationUpdate = onDocumentUpdated(
     // Case 0: New session (userId only). Set startedAt/expiresAt from server.
     if (afterSession?.userId && !afterSession.startedAt) {
       const now = admin.firestore.Timestamp.now();
+      const userId = afterSession.userId;
+      const joinedAt = before.attendees?.[userId]?.joinedAt;
+      const waitSeconds =
+        joinedAt ?
+          Math.max(
+            0,
+            Math.floor((now.toMillis() - joinedAt.toMillis()) / 1000),
+          ) :
+          null;
       const isTimed = after.mode === "timed";
       const durationSec = after.sessionDurationSeconds ?? 900;
       const update: Record<string, unknown> = {
@@ -70,6 +157,14 @@ export const onStationUpdate = onDocumentUpdated(
       }
       const docRef = event.data?.after?.ref;
       if (docRef) await docRef.update(update);
+      if (waitSeconds != null) {
+        await incrementSessionAnalytics(stationId, now, waitSeconds);
+      } else {
+        logger.warn(
+          `Missing joinedAt for user ${userId} on station ${stationId}; ` +
+            "skipping wait time analytics",
+        );
+      }
       return;
     }
 
@@ -621,6 +716,7 @@ export const expireReservation = onTaskDispatched(
         }
 
         tx.update(stationRef, updates);
+        analyticsIncrementNoShowTx(tx, stationId, now);
       });
 
       logger.info(
