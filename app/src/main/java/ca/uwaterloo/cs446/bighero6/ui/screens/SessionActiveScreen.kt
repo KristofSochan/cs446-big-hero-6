@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
@@ -42,43 +43,30 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
                 viewModel.startSessionTimer(stationId)
             }
 
-            // Idle station (no one waiting, no active session): first tap claims machine immediately.
-            station.currentSession == null && (station.attendees.isEmpty()) -> {
-                // Join the waitlist as the only person, then start the session.
-                val joinResult = repository.addToWaitlist(stationId, userId)
-                if (joinResult.isSuccess) {
-                    val startResult = repository.startSession(
-                        stationId,
-                        userId,
-                        station.sessionDurationSeconds,
-                        station.mode.ifEmpty { "manual" }
-                    )
-                    if (startResult.isSuccess) {
-                        viewModel.startSessionTimer(stationId)
-                    } else {
-                        startError = startResult.exceptionOrNull()?.message ?: "Failed to start session"
-                    }
-                } else {
-                    startError = joinResult.exceptionOrNull()?.message ?: "Failed to join waitlist"
+            // Idle or head of queue: try to start session. One transaction wins; if we lose, join queue.
+            station.currentSession == null && (station.attendees.isEmpty() || station.isAtPositionOne(userId)) -> {
+                if (station.attendees.isEmpty()) {
+                    repository.addToWaitlist(stationId, userId)
                 }
-            }
-
-            // Head of queue and machine just freed: tap starts session.
-            station.currentSession == null && station.isAtPositionOne(userId) -> {
-                val result = repository.startSession(
+                val startResult = repository.startSession(
                     stationId,
                     userId,
                     station.sessionDurationSeconds,
                     station.mode.ifEmpty { "manual" }
                 )
-                if (result.isSuccess) {
+                if (startResult.isSuccess) {
                     viewModel.startSessionTimer(stationId)
                 } else {
-                    startError = result.exceptionOrNull()?.message ?: "Failed to start session"
+                    ensureInQueueAndNavigateToStationInfo(
+                        stationId, userId, station, repository, navController
+                    )
                 }
             }
 
-            else -> startError = "You're not at the front of the line"
+            // Not eligible to start (not at front): ensure in queue and show station info.
+            else -> ensureInQueueAndNavigateToStationInfo(
+                stationId, userId, station, repository, navController
+            )
         }
     }
 
@@ -173,8 +161,28 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
                 },
                 modifier = Modifier.padding(top = 16.dp)
             ) {
-                Text("Back to My Waitlists")
+            Text("Back to My Waitlists")
             }
         }
     }
 }
+
+/**
+ * Ensures user is in the station's waitlist (adds if not), then navigates to Station Info.
+ * Used whenever we didn't start a session — either we weren't eligible or startSession failed.
+ * One transaction wins; everyone else ends up in the queue.
+ */
+private suspend fun ensureInQueueAndNavigateToStationInfo(
+    stationId: String,
+    userId: String,
+    station: Station,
+    repository: FirestoreRepository,
+    navController: NavController
+) {
+    if (userId !in station.attendees) {
+        repository.addToWaitlist(stationId, userId)
+    }
+    navController.popBackStack()
+    navController.navigate(Screen.StationInfo("").createRoute(stationId, autoStart = false))
+}
+

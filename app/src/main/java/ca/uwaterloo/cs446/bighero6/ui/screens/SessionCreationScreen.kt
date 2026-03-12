@@ -37,7 +37,7 @@ fun SessionCreationScreen(
     var state by remember { mutableStateOf(StationState.Active) }
     var durationMinutes by remember { mutableStateOf("15") }
     var enforceCheckinLimit by remember { mutableStateOf(false) }
-    var checkinWindowMinutes by remember { mutableStateOf("15") }
+    var checkinWindowSeconds by remember { mutableStateOf("60") }
     
     val repository = remember { FirestoreRepository() }
     val scope = rememberCoroutineScope()
@@ -142,14 +142,14 @@ fun SessionCreationScreen(
                 }
 
                 if (enforceCheckinLimit) {
-                    Text("Check-in window (minutes)", style = MaterialTheme.typography.labelMedium)
+                    Text("Check-in window (seconds)", style = MaterialTheme.typography.labelMedium)
                     OutlinedTextField(
-                        value = checkinWindowMinutes,
-                        onValueChange = { checkinWindowMinutes = it.filter(Char::isDigit) },
+                        value = checkinWindowSeconds,
+                        onValueChange = { checkinWindowSeconds = it.filter(Char::isDigit) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        placeholder = { Text("15") }
+                        placeholder = { Text("60") }
                     )
                 }
 
@@ -186,7 +186,7 @@ fun SessionCreationScreen(
             DraftAndPublishButtons(
                 enabled = stationName.isNotBlank() &&
                         (mode != StationMode.Timed || durationMinutes.toIntOrNull() != null) &&
-                        (!enforceCheckinLimit || checkinWindowMinutes.toIntOrNull() != null),
+                        (!enforceCheckinLimit || checkinWindowSeconds.toIntOrNull() != null),
                 onSaveDraft = {
                     // TODO: save draft logic
                     navController.navigate(Screen.MyStations.route)
@@ -199,6 +199,8 @@ fun SessionCreationScreen(
                             mode = mode.toString().lowercase(),
                             isActive = state == StationState.Active,
                             sessionDurationSeconds = (durationMinutes.toIntOrNull() ?: 0) * 60,
+                            enforceCheckinLimit = enforceCheckinLimit,
+                            checkinWindowSeconds = checkinWindowSeconds.toIntOrNull() ?: 60
                         )
                         repository.setStation(newStation)
                         navController.navigate(Screen.MyStations.route)

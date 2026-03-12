@@ -23,6 +23,8 @@
 ```bash
 cd functions
 npm run lint -- --fix
+# or maybe this lint?
+npx eslint src --ext .ts --fix
 
 npm run build
 npm run deploy

@@ -18,9 +18,11 @@ data class Station(
     val sessionDurationSeconds: Int = 900,
     val mode: String = "manual",
     val enforceCheckinLimit: Boolean = false,
-    val checkinWindowMinutes: Int = 15,
+    /** Check-in window in seconds (how long the head of queue has to start). */
+    val checkinWindowSeconds: Int = 60,
     val attendees: Map<String, Attendee> = emptyMap(),
     val currentSession: CurrentSession? = null,
+    val currentReservation: CurrentReservation? = null,
     @ServerTimestamp
     val createdAt: Timestamp? = null
 ) {

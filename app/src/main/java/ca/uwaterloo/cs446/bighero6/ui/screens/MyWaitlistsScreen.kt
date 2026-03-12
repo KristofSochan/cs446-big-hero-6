@@ -12,7 +12,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.activity.ComponentActivity
 import androidx.navigation.NavController
+import java.util.concurrent.TimeUnit
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.ui.components.TapListScaffold
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
@@ -26,9 +28,13 @@ private const val SHOW_RESET_USER_ID_BUTTON = false
  * Shows all waitlists user is currently in
  */
 @Composable
-fun MyWaitlistsScreen(navController: NavController, viewModel: HomeViewModel = viewModel()) {
+fun MyWaitlistsScreen(
+    navController: NavController,
+    viewModel: HomeViewModel = viewModel(LocalContext.current as ComponentActivity)
+) {
     val context = LocalContext.current
     val waitlists by viewModel.waitlists.collectAsState()
+    val checkinRemainingByStation by viewModel.checkinRemainingByStation.collectAsState()
     var userId by remember { mutableStateOf(DeviceIdManager.getUserId(context)) }
     
     LaunchedEffect(Unit) {
@@ -47,7 +53,7 @@ fun MyWaitlistsScreen(navController: NavController, viewModel: HomeViewModel = v
                     onClick = {
                         navController.navigate(
                             Screen.StationInfo("").createRoute(
-                                "40ec596e-7f31-4db8-846c-7ef0c8a33876",
+                                "261a3fc5-831a-4848-ae8a-202fc795dcf4",
                                 autoStart = true
                             )
                         )
@@ -118,6 +124,20 @@ fun MyWaitlistsScreen(navController: NavController, viewModel: HomeViewModel = v
                                             color = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.padding(top = 8.dp)
                                         )
+                                        val checkinRemainingMs =
+                                            checkinRemainingByStation[waitlist.stationId]
+                                        if (checkinRemainingMs != null && checkinRemainingMs > 0) {
+                                            val minutes =
+                                                TimeUnit.MILLISECONDS.toMinutes(checkinRemainingMs)
+                                            val seconds =
+                                                TimeUnit.MILLISECONDS.toSeconds(checkinRemainingMs) % 60
+                                            Text(
+                                                "Check in within ${String.format("%d:%02d", minutes, seconds)}",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(top = 4.dp)
+                                            )
+                                        }
                                     }
 
                                     waitlist.position == 1 && waitlist.hasActiveSession -> {

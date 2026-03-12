@@ -24,6 +24,11 @@ private const val FUNCTIONS_REGION = "us-east4"
  */
 data class SessionTimeResult(val initialRemainingMs: Long?)
 
+/**
+ * Result of getReservationTime callable: initial remaining ms for check-in countdown, or null.
+ */
+data class ReservationTimeResult(val initialRemainingMs: Long?)
+
 class FirestoreRepository {
     private val db = FirebaseFirestore.getInstance()
     private val functions = FirebaseFunctions.getInstance(FUNCTIONS_REGION)
@@ -376,6 +381,29 @@ class FirestoreRepository {
             SessionTimeResult(initialRemainingMs)
         } catch (e: Exception) {
             SessionTimeResult(null)
+        }
+    }
+
+    /**
+     * Get reservation time from server for check-in countdown (elapsed-only, same as session).
+     */
+    suspend fun getReservationTime(stationId: String): ReservationTimeResult {
+        return try {
+            val result = functions
+                .getHttpsCallable("getReservationTime")
+                .call(hashMapOf("stationId" to stationId))
+                .await()
+            @Suppress("UNCHECKED_CAST")
+            val data = result.data as? Map<String, Any?> ?: return ReservationTimeResult(null)
+            val expiresAtMillis = (data["reservationExpiresAtMillis"] as? Number)?.toLong()
+            val serverTimeMillis = (data["serverTimeMillis"] as? Number)?.toLong()
+            if (expiresAtMillis == null || serverTimeMillis == null) {
+                return ReservationTimeResult(null)
+            }
+            val initialRemainingMs = (expiresAtMillis - serverTimeMillis).coerceAtLeast(0L)
+            ReservationTimeResult(initialRemainingMs)
+        } catch (e: Exception) {
+            ReservationTimeResult(null)
         }
     }
 

@@ -13,6 +13,7 @@ import {onTaskDispatched} from "firebase-functions/v2/tasks";
 import {getFunctions} from "firebase-admin/functions";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
+import {Station as StationDoc, Attendee} from "./types";
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -42,8 +43,8 @@ import {onDocumentUpdated} from "firebase-functions/v2/firestore";
 export const onStationUpdate = onDocumentUpdated(
   {document: "stations/{stationId}", region: REGION},
   async (event) => {
-    const before = event.data?.before.data();
-    const after = event.data?.after.data();
+    const before = event.data?.before.data() as StationDoc | undefined;
+    const after = event.data?.after.data() as StationDoc | undefined;
     const stationId = event.params.stationId;
 
     if (!before || !after) return;
@@ -62,7 +63,7 @@ export const onStationUpdate = onDocumentUpdated(
       if (isTimed) {
         update["currentSession.expiresAt"] = new admin.firestore.Timestamp(
           now.seconds + durationSec,
-          now.nanoseconds
+          now.nanoseconds,
         );
       }
       const docRef = event.data?.after?.ref;
@@ -73,7 +74,7 @@ export const onStationUpdate = onDocumentUpdated(
     // Case 1: Session has expiresAt - schedule expiration task
     if (afterSession?.expiresAt && !beforeSession?.expiresAt) {
       logger.info(
-        `Session started for station ${stationId}, scheduling expiration`
+        `Session started for station ${stationId}, scheduling expiration`,
       );
       await scheduleSessionExpiration(stationId, afterSession.expiresAt);
     }
@@ -82,23 +83,9 @@ export const onStationUpdate = onDocumentUpdated(
     if (beforeSession && !afterSession) {
       logger.info(`Session cleared for station ${stationId}`);
 
-      // Get attendees map values and find person at position 1
-      const attendeesMap = after.attendees || {};
-      const attendees = Object.values(attendeesMap) as Array<{
-        status: string;
-        joinedAt: admin.firestore.Timestamp;
-        userId: string;
-      }>;
-      const waitingAttendees = attendees
-        .filter((a) => a.status === "waiting")
-        .sort((a, b) => a.joinedAt.toMillis() - b.joinedAt.toMillis());
-
-      if (waitingAttendees.length > 0) {
-        const nextUserId = waitingAttendees[0].userId;
-        await notifyUserAtPositionOne(nextUserId, stationId, after.name);
-      }
+      await advanceQueue(stationId, after);
     }
-  }
+  },
 );
 
 /**
@@ -108,10 +95,12 @@ export const onStationUpdate = onDocumentUpdated(
  */
 async function scheduleSessionExpiration(
   stationId: string,
-  expiresAt: admin.firestore.Timestamp
+  expiresAt: admin.firestore.Timestamp,
 ) {
   try {
-    const queue = getFunctions().taskQueue("expireSession");
+    const queue = getFunctions().taskQueue(
+      `locations/${REGION}/functions/expireSession`,
+    );
     const targetUri = await getFunctionUrl("expireSession");
 
     const scheduleTime = expiresAt.toDate();
@@ -122,16 +111,16 @@ async function scheduleSessionExpiration(
         scheduleTime: scheduleTime,
         dispatchDeadlineSeconds: 60 * 5, // 5 minutes max
         uri: targetUri,
-      }
+      },
     );
 
     logger.info(
-      `Scheduled expiration task for station ${stationId} at ${scheduleTime}`
+      `Scheduled expiration task for station ${stationId} at ${scheduleTime}`,
     );
   } catch (error) {
     logger.error(
       `Error scheduling expiration task for station ${stationId}:`,
-      error
+      error,
     );
     // Don't throw - session will still expire via backup scheduled function
   }
@@ -149,6 +138,121 @@ async function getFunctionUrl(functionName: string): Promise<string> {
 }
 
 /**
+ * Advances the queue for a station: notifies head of queue and, if
+ * enforceCheckinLimit is enabled, creates a reservation window and
+ * schedules its expiration.
+ * @param {string} stationId - The station ID
+ * @param {StationDoc} stationSnapshot - Latest station data
+ */
+async function advanceQueue(
+  stationId: string,
+  stationSnapshot?: StationDoc,
+): Promise<void> {
+  const db = admin.firestore();
+  const stationRef = db.collection("stations").doc(stationId);
+
+  const station: StationDoc | undefined =
+    stationSnapshot ??
+    ((await stationRef.get()).data() as StationDoc | undefined);
+
+  if (!station) return;
+
+  const attendeesMap = station.attendees || {};
+  const attendees = Object.values(attendeesMap) as Attendee[];
+  const waitingAttendees = attendees
+    .filter((a) => a.status === "waiting")
+    .sort((a, b) => a.joinedAt.toMillis() - b.joinedAt.toMillis());
+
+  if (waitingAttendees.length === 0) {
+    // No one waiting; clear any existing reservation.
+    await stationRef
+      .update({
+        currentReservation: admin.firestore.FieldValue.delete(),
+      })
+      .catch((error) => {
+        logger.error(
+          `Failed to clear currentReservation for station ${stationId}`,
+          error,
+        );
+      });
+    return;
+  }
+
+  const nextUserId = waitingAttendees[0].userId;
+
+  await notifyUserAtPositionOne(nextUserId, stationId, station.name);
+
+  if (!station.enforceCheckinLimit) {
+    // No check-in window enforcement; nothing more to do.
+    await stationRef
+      .update({
+        currentReservation: admin.firestore.FieldValue.delete(),
+      })
+      .catch((error) => {
+        logger.error(
+          `Failed to clear currentReservation for station ${stationId}`,
+          error,
+        );
+      });
+    return;
+  }
+
+  const checkinWindowSeconds = station.checkinWindowSeconds ?? 60;
+  const now = admin.firestore.Timestamp.now();
+  const expiresAt = new admin.firestore.Timestamp(
+    now.seconds + checkinWindowSeconds,
+    now.nanoseconds,
+  );
+
+  await stationRef.update({
+    currentReservation: {
+      userId: nextUserId,
+      expiresAt,
+    },
+  });
+
+  await scheduleReservationExpiration(stationId, expiresAt);
+}
+
+/**
+ * Schedules a Cloud Task to expire a reservation at the specified time.
+ * @param {string} stationId - The station ID
+ * @param {admin.firestore.Timestamp} expiresAt - When the reservation expires
+ */
+async function scheduleReservationExpiration(
+  stationId: string,
+  expiresAt: admin.firestore.Timestamp,
+) {
+  try {
+    const queue = getFunctions().taskQueue(
+      `locations/${REGION}/functions/expireReservation`,
+    );
+    const targetUri = await getFunctionUrl("expireReservation");
+
+    const scheduleTime = expiresAt.toDate();
+
+    await queue.enqueue(
+      {stationId},
+      {
+        scheduleTime,
+        dispatchDeadlineSeconds: 60 * 5,
+        uri: targetUri,
+      },
+    );
+
+    logger.info(
+      `Scheduled reservation expiration for station ${stationId} ` +
+        `at ${scheduleTime}`,
+    );
+  } catch (error) {
+    logger.error(
+      `Error scheduling reservation expiration for station ${stationId}:`,
+      error,
+    );
+  }
+}
+
+/**
  * Sends FCM notification to user at position 1
  * @param {string} userId - The user ID
  * @param {string} stationId - The station ID
@@ -157,11 +261,12 @@ async function getFunctionUrl(functionName: string): Promise<string> {
 async function notifyUserAtPositionOne(
   userId: string,
   stationId: string,
-  stationName: string
+  stationName: string,
 ) {
   try {
     // Get user's FCM token
-    const userDoc = await admin.firestore()
+    const userDoc = await admin
+      .firestore()
       .collection("users")
       .doc(userId)
       .get();
@@ -173,9 +278,7 @@ async function notifyUserAtPositionOne(
 
     const fcmToken = userDoc.data()?.fcmToken;
     if (!fcmToken) {
-      logger.info(
-        `No FCM token for user ${userId} - skipping notification`
-      );
+      logger.info(`No FCM token for user ${userId} - skipping notification`);
       return;
     }
 
@@ -183,7 +286,8 @@ async function notifyUserAtPositionOne(
     const message = {
       notification: {
         title: "It's Your Turn!",
-        body: `You're next in line for ${stationName}. ` +
+        body:
+          `You're next in line for ${stationName}. ` +
           "Tap the NFC tag to start.",
       },
       data: {
@@ -194,9 +298,7 @@ async function notifyUserAtPositionOne(
     };
 
     await admin.messaging().send(message);
-    logger.info(
-      `Notification sent to user ${userId} for station ${stationId}`
-    );
+    logger.info(`Notification sent to user ${userId} for station ${stationId}`);
   } catch (error) {
     logger.error(`Error sending notification to user ${userId}:`, error);
   }
@@ -207,31 +309,60 @@ async function notifyUserAtPositionOne(
  * Client uses initialRemaining = (expiresAtMillis - serverTimeMillis) / 1000
  * then counts down by elapsed time only (no clock skew).
  */
-export const getSessionTime = onCall(
+export const getSessionTime = onCall({region: REGION}, async (request) => {
+  const stationId = request.data?.stationId;
+  if (!stationId || typeof stationId !== "string") {
+    throw new HttpsError("invalid-argument", "stationId required");
+  }
+  const stationRef = admin.firestore().collection("stations").doc(stationId);
+  const stationDoc = await stationRef.get();
+  if (!stationDoc.exists) {
+    throw new HttpsError("not-found", "Station not found");
+  }
+  const session = stationDoc.data()?.currentSession;
+  const expiresAt = session?.expiresAt;
+  const serverNow = admin.firestore.Timestamp.now();
+  if (!expiresAt) {
+    return {expiresAtMillis: null, serverTimeMillis: serverNow.toMillis()};
+  }
+  return {
+    expiresAtMillis: expiresAt.toMillis(),
+    serverTimeMillis: serverNow.toMillis(),
+  };
+});
+
+/**
+ * Callable: returns server time and reservation expiry for check-in countdown.
+ * Client uses initialRemainingMs =
+ * reservationExpiresAtMillis - serverTimeMillis
+ * then counts down by elapsed time only (same as session timer).
+ */
+export const getReservationTime = onCall(
   {region: REGION},
   async (request) => {
     const stationId = request.data?.stationId;
     if (!stationId || typeof stationId !== "string") {
       throw new HttpsError("invalid-argument", "stationId required");
     }
-    const stationRef = admin.firestore()
-      .collection("stations")
-      .doc(stationId);
+    const stationRef = admin.firestore().collection("stations").doc(stationId);
     const stationDoc = await stationRef.get();
     if (!stationDoc.exists) {
       throw new HttpsError("not-found", "Station not found");
     }
-    const session = stationDoc.data()?.currentSession;
-    const expiresAt = session?.expiresAt;
+    const reservation = stationDoc.data()?.currentReservation;
+    const expiresAt = reservation?.expiresAt;
     const serverNow = admin.firestore.Timestamp.now();
     if (!expiresAt) {
-      return {expiresAtMillis: null, serverTimeMillis: serverNow.toMillis()};
+      return {
+        reservationExpiresAtMillis: null,
+        serverTimeMillis: serverNow.toMillis(),
+      };
     }
     return {
-      expiresAtMillis: expiresAt.toMillis(),
+      reservationExpiresAtMillis: expiresAt.toMillis(),
       serverTimeMillis: serverNow.toMillis(),
     };
-  }
+  },
 );
 
 /**
@@ -250,7 +381,7 @@ export const expireSession = onTaskDispatched(
     },
   },
   async (req) => {
-    const {stationId} = req.data as {"stationId": string};
+    const {stationId} = req.data as { stationId: string };
     const db = admin.firestore();
 
     try {
@@ -269,7 +400,7 @@ export const expireSession = onTaskDispatched(
       if (!currentSession || !currentSession.expiresAt) {
         logger.info(
           `Station ${stationId} has no active session - ` +
-          "already expired or cleared"
+            "already expired or cleared",
         );
         return;
       }
@@ -280,7 +411,7 @@ export const expireSession = onTaskDispatched(
         const expiresAt = currentSession.expiresAt.toDate();
         logger.warn(
           `Session for station ${stationId} not yet expired ` +
-          `(expires at ${expiresAt})`
+            `(expires at ${expiresAt})`,
         );
         return;
       }
@@ -295,6 +426,119 @@ export const expireSession = onTaskDispatched(
       logger.error(`Error expiring session for station ${stationId}:`, error);
       throw error;
     }
-  }
+  },
 );
 
+/**
+ * Cloud Task handler that expires a reservation window.
+ * If the reserved user did not start a session in time,
+ * they are removed and the queue advances.
+ */
+export const expireReservation = onTaskDispatched(
+  {
+    region: REGION,
+    retryConfig: {
+      maxAttempts: 3,
+      minBackoffSeconds: 10,
+    },
+    rateLimits: {
+      maxConcurrentDispatches: 10,
+    },
+  },
+  async (req) => {
+    const {stationId} = req.data as { stationId: string };
+    const db = admin.firestore();
+
+    try {
+      const stationRef = db.collection("stations").doc(stationId);
+      const stationDoc = await stationRef.get();
+
+      if (!stationDoc.exists) {
+        logger.warn(`Station ${stationId} not found (expireReservation)`);
+        return;
+      }
+
+      const station = stationDoc.data() as StationDoc;
+
+      // If a session already started, reservation is implicitly consumed.
+      if (station.currentSession && station.currentSession.userId) {
+        logger.info(
+          `Station ${stationId} has active session; ` +
+            "skipping reservation expiration",
+        );
+        return;
+      }
+
+      const reservation = station.currentReservation;
+
+      if (!reservation) {
+        logger.info(
+          `Station ${stationId} has no currentReservation; ` +
+            "nothing to expire",
+        );
+        return;
+      }
+
+      const now = admin.firestore.Timestamp.now();
+      if (reservation.expiresAt.toMillis() > now.toMillis()) {
+        logger.warn(
+          `Reservation for station ${stationId} not yet expired ` +
+            `(expires at ${reservation.expiresAt.toDate()})`,
+        );
+        return;
+      }
+
+      // Remove reserved user atomically if still reserved, then advance queue.
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(stationRef);
+        if (!snap.exists) return;
+        const data = snap.data() as StationDoc;
+        const currentReservation = data.currentReservation;
+        const currentSession = data.currentSession;
+
+        if (!currentReservation || currentSession?.userId) {
+          return;
+        }
+
+        // Ensure we are still expiring the same reservation.
+        if (
+          currentReservation.userId !== reservation.userId ||
+          currentReservation.expiresAt.toMillis() !==
+            reservation.expiresAt.toMillis()
+        ) {
+          return;
+        }
+
+        const updates: Record<string, unknown> = {
+          currentReservation: admin.firestore.FieldValue.delete(),
+        };
+
+        if (data.attendees && data.attendees[reservation.userId]) {
+          updates[`attendees.${reservation.userId}`] =
+            admin.firestore.FieldValue.delete();
+        }
+
+        tx.update(stationRef, updates);
+      });
+
+      logger.info(
+        `Expired reservation and removed user ${
+          reservation.userId
+        } from station ${stationId}`,
+      );
+
+      // Reload station and advance queue for next person, if any.
+      const updatedSnap = await stationRef.get();
+      const updatedStation = updatedSnap.data() as StationDoc | undefined;
+      if (updatedStation) {
+        await advanceQueue(stationId, updatedStation);
+      }
+    } catch (error) {
+      logger.error(
+        `Error expiring reservation for station ${stationId}:`,
+        error,
+      );
+      throw error;
+    }
+  },
+);
