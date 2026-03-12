@@ -69,23 +69,40 @@ function stationDailyAnalyticsRef(
 }
 
 /**
- * Increment daily aggregates for a completed session start event.
- * Stores only counts/sums (no user ids).
+ * Increment daily aggregates for "queue wait" (time until it's your turn).
+ * Does not change totalSessions; used when advancing the queue.
+ * @param {string} stationId - Station id.
+ * @param {admin.firestore.Timestamp} ts - Time of turn.
+ * @param {number} waitSeconds - Queue wait time in seconds.
+ */
+async function incrementQueueWaitAnalytics(
+  stationId: string,
+  ts: admin.firestore.Timestamp,
+  waitSeconds: number,
+): Promise<void> {
+  const ref = stationDailyAnalyticsRef(stationId, ts);
+  await ref.set(
+    {
+      totalWaitTimeSeconds: admin.firestore.FieldValue.increment(waitSeconds),
+    },
+    {merge: true},
+  );
+}
+
+/**
+ * Increment daily aggregates for a session that actually started.
+ * This is independent from queue wait; walk-ups and queued starts both count.
  * @param {string} stationId - Station id.
  * @param {admin.firestore.Timestamp} startedAt - Session start time.
- * @param {number} waitSeconds - Wait time in seconds.
  */
-async function incrementSessionAnalytics(
+async function incrementStartedSessionAnalytics(
   stationId: string,
   startedAt: admin.firestore.Timestamp,
-  waitSeconds: number,
 ): Promise<void> {
   const ref = stationDailyAnalyticsRef(stationId, startedAt);
   await ref.set(
     {
       totalSessions: admin.firestore.FieldValue.increment(1),
-      totalWaitTimeSeconds: admin.firestore.FieldValue.increment(waitSeconds),
-      totalNoShows: admin.firestore.FieldValue.increment(0),
     },
     {merge: true},
   );
@@ -148,6 +165,7 @@ export const onStationUpdate = onDocumentUpdated(
       }
       const docRef = event.data?.after?.ref;
       if (docRef) await docRef.update(update);
+      await incrementStartedSessionAnalytics(stationId, now);
       return;
     }
 
@@ -290,7 +308,7 @@ async function advanceQueue(
 
   // Analytics: "queue wait" is time until it's your turn
   // (excludes check-in delay).
-  await incrementSessionAnalytics(stationId, now, queueWaitSeconds);
+  await incrementQueueWaitAnalytics(stationId, now, queueWaitSeconds);
 
   await notifyUserAtPositionOne(nextUserId, stationId, station.name);
 
