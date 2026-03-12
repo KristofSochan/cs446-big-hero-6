@@ -129,13 +129,13 @@ fun StationInfoScreen(
 
                 val statusText = when {
                     isMySessionActive -> "You're currently using this station"
-                    showIdleAutoJoinFlow ->
+                    showIdleAutoJoinFlow -> // this is likely never seen since in the auto join flow the user goes straigh to Session (timer) view
                         "No one is waiting. Your session will begin immediately."
                     isFirstInLine && !hasActiveSession ->
                         "Your turn! Go to the machine and tap the NFC tag to start your session."
                     isFirstInLine && hasActiveSession ->
                         "You will be notified when the station is ready."
-                    isIdleStation && !autoStart ->
+                    isIdleStation && station.autoJoinEnabled ->
                         "Station is available. Tap the NFC tag at the machine to start."
                     else -> null
                 }
