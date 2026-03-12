@@ -5,8 +5,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import kotlin.math.max
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.data.Station
@@ -112,31 +114,52 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
                 )
             }
 
-            if (isTimedMode) {
-                val waitingForServer = timeRemaining == 0L && !isExpired
-                if (waitingForServer) {
-                    Text(
-                        "Starting…",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp)
-                    )
+            val configuration = LocalConfiguration.current
+            val timerBoxHeight = max(
+                96,
+                (configuration.screenHeightDp * 0.14f).toInt()
+            ).dp
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(timerBoxHeight),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isTimedMode) {
+                    val endingDueToExpiry =
+                        timeRemaining == 0L && !isExpired &&
+                        endSessionState is SessionViewModel.EndSessionState.Loading
+                    val waitingForServer =
+                        timeRemaining == 0L && !isExpired && !endingDueToExpiry
+                    when {
+                        endingDueToExpiry -> Text(
+                            "Ending session…",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        waitingForServer -> Text(
+                            "Starting…",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        else -> {
+                            val minutes =
+                                TimeUnit.MILLISECONDS.toMinutes(timeRemaining)
+                            val seconds =
+                                TimeUnit.MILLISECONDS.toSeconds(timeRemaining) % 60
+                            Text(
+                                String.format("%02d:%02d", minutes, seconds),
+                                style = MaterialTheme.typography.displayMedium
+                            )
+                        }
+                    }
                 } else {
-                    val minutes = TimeUnit.MILLISECONDS.toMinutes(timeRemaining)
-                    val seconds = TimeUnit.MILLISECONDS.toSeconds(timeRemaining) % 60
                     Text(
-                        String.format("%02d:%02d", minutes, seconds),
-                        style = MaterialTheme.typography.displayMedium,
-                        modifier = Modifier.padding(16.dp)
+                        "No time limit",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            } else {
-                Text(
-                    "No time limit",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp)
-                )
             }
 
             when (val state = endSessionState) {
