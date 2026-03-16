@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
  * Initial screen - creates user document in Firestore
  */
 @Composable
-fun UserSetupScreen(navController: NavController) {
+fun UserSetupScreen(navController: NavController, initialName: String? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(false) }
@@ -25,13 +25,13 @@ fun UserSetupScreen(navController: NavController) {
     
     val userId = remember { DeviceIdManager.getUserId(context) }
     
-    fun createUser() {
+    fun createUser(name: String? = null) {
         scope.launch {
             isLoading = true
             error = null
             try {
                 val repository = FirestoreRepository()
-                repository.getOrCreateUser(userId)
+                repository.getOrCreateUser(userId, name)
                 navController.navigate(Screen.MyWaitlists.route) {
                     popUpTo(Screen.UserSetup.route) { inclusive = true }
                 }
@@ -40,6 +40,13 @@ fun UserSetupScreen(navController: NavController) {
             } finally {
                 isLoading = false
             }
+        }
+    }
+
+    // Auto-run createUser if we have an initialName (from SignUp)
+    LaunchedEffect(Unit) {
+        if (initialName != null) {
+            createUser(initialName)
         }
     }
     

@@ -2,13 +2,19 @@ package ca.uwaterloo.cs446.bighero6.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.ui.screens.*
 
 sealed class Screen(val route: String) {
-    object UserSetup : Screen("user_setup")
+    object SignIn : Screen("sign_in")
+    object SignUp : Screen("sign_up")
+    object UserSetup : Screen("user_setup?name={name}") {
+        fun createRoute(name: String) = "user_setup?name=$name"
+    }
     object MyWaitlists : Screen("my_waitlists")
     object MyStations : Screen("my_stations")
     object SessionCreation : Screen("session_creation")
@@ -36,10 +42,26 @@ sealed class Screen(val route: String) {
 fun NavGraph(navController: NavHostController) {
     NavHost(
         navController = navController,
-        startDestination = Screen.UserSetup.route
+        startDestination = Screen.SignIn.route
     ) {
-        composable(Screen.UserSetup.route) {
-            UserSetupScreen(navController = navController)
+        composable(Screen.SignIn.route) {
+            SignInScreen(navController = navController)
+        }
+
+        composable(Screen.SignUp.route) {
+            SignUpScreen(navController = navController)
+        }
+
+        composable(
+            route = Screen.UserSetup.route,
+            arguments = listOf(navArgument("name") { 
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            })
+        ) { backStackEntry ->
+            val name = backStackEntry.arguments?.getString("name")
+            UserSetupScreen(navController = navController, initialName = name)
         }
         
         composable(Screen.MyWaitlists.route) {
