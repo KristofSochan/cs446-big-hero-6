@@ -10,6 +10,7 @@ data class User(
     @DocumentId
     val docId: String = "",
     val id: String = "", // same val as docId but is a standard field of the document
+    val name: String = "",
     val fcmToken: String? = null,
     val currentWaitlists: List<String> = emptyList(),
     @ServerTimestamp
