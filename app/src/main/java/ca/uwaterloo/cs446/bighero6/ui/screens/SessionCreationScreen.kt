@@ -37,10 +37,13 @@ fun SessionCreationScreen(
     var stationName by remember { mutableStateOf("") }
     var mode by remember { mutableStateOf(StationMode.Manual) }
     var state by remember { mutableStateOf(StationState.Active) }
+    var presetSelection by remember { mutableStateOf(StationPresetSelection.Custom) }
     var durationMinutes by remember { mutableStateOf("15") }
     var durationSeconds by remember { mutableStateOf("00") }
     var autoJoinEnabled by remember { mutableStateOf(true) }
     var operatorManagesSessionsOnly by remember { mutableStateOf(false) }
+    var notificationMode by remember { mutableStateOf("auto") }
+    var showPositionToGuests by remember { mutableStateOf(true) }
     var enforceCheckinLimit by remember { mutableStateOf(false) }
     var checkinMinutes by remember { mutableStateOf("1") }
     var checkinSeconds by remember { mutableStateOf("00") }
@@ -81,243 +84,103 @@ fun SessionCreationScreen(
                     .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text("Station Name", style = MaterialTheme.typography.labelMedium)
-                OutlinedTextField(
-                    value = stationName,
-                    onValueChange = { stationName = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = { Text("Station Name") }
+                StationNameRow(
+                    stationName = stationName,
+                    onNameChange = { stationName = it }
+                )
+                StationPresetRow(
+                    selection = presetSelection,
+                    onSelfServe = {
+                        applySelfServePreset(
+                            setOperatorManaged = { operatorManagesSessionsOnly = it },
+                            setNotificationMode = { notificationMode = it },
+                            setShowPositionToGuests = { showPositionToGuests = it },
+                            setEnforceCheckinLimit = { enforceCheckinLimit = it },
+                            setIsTimed = { isTimed -> mode = if (isTimed) StationMode.Timed else StationMode.Manual },
+                            setAutoJoinEnabled = { autoJoinEnabled = it }
+                        )
+                        presetSelection = StationPresetSelection.SelfServe
+                    },
+                    onManned = {
+                        applyMannedPreset(
+                            setOperatorManaged = { operatorManagesSessionsOnly = it },
+                            setNotificationMode = { notificationMode = it },
+                            setShowPositionToGuests = { showPositionToGuests = it },
+                            setEnforceCheckinLimit = { enforceCheckinLimit = it },
+                            setIsTimed = { isTimed -> mode = if (isTimed) StationMode.Timed else StationMode.Manual },
+                            setAutoJoinEnabled = { autoJoinEnabled = it }
+                        )
+                        presetSelection = StationPresetSelection.Manned
+                    }
                 )
 
-                Text("Station Mode", style = MaterialTheme.typography.titleMedium)
-
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    SegmentedButton(
-                        selected = mode == StationMode.Manual,
-                        onClick = { mode = StationMode.Manual },
-                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                        icon = {
-                            if (mode == StationMode.Manual) {
-                                Icon(Icons.Filled.Check, contentDescription = null)
-                            }
-                        },
-                        label = { Text("Manual") }
-                    )
-                    SegmentedButton(
-                        selected = mode == StationMode.Timed,
-                        onClick = { mode = StationMode.Timed },
-                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                        icon = {
-                            if (mode == StationMode.Timed) {
-                                Icon(Icons.Filled.Check, contentDescription = null)
-                            }
-                        },
-                        label = { Text("Timed") }
-                    )
-                }
-
-                if (mode == StationMode.Timed) {
-                    Text("Session length", style = MaterialTheme.typography.labelMedium)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = durationMinutes,
-                            onValueChange = { durationMinutes = it.filter(Char::isDigit) },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            label = { Text("Min") },
-                            placeholder = { Text("15") }
-                        )
-                        OutlinedTextField(
-                            value = durationSeconds,
-                            onValueChange = {
-                                val digits = it.filter(Char::isDigit).take(2)
-                                val sec = digits.toIntOrNull()
-                                durationSeconds = when {
-                                    digits.isEmpty() -> ""
-                                    sec == null -> ""
-                                    sec > 59 -> "59"
-                                    else -> digits.padStart(2, '0')
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            label = { Text("Sec") },
-                            placeholder = { Text("00") }
-                        )
+                SessionModeRow(
+                    isTimed = (mode == StationMode.Timed),
+                    onModeChange = { isTimed ->
+                        mode = if (isTimed) StationMode.Timed else StationMode.Manual
+                        presetSelection = StationPresetSelection.Custom
                     }
-                }
+                )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Enforce check-in time limit", style = MaterialTheme.typography.titleSmall)
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            "Require guests to check in within a set\ntime when it is their turn.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = enforceCheckinLimit,
-                        onCheckedChange = { enforceCheckinLimit = it }
-                    )
-                }
+                SessionLengthRow(
+                    isTimed = (mode == StationMode.Timed),
+                    durationMinutes = durationMinutes,
+                    durationSeconds = durationSeconds,
+                    onMinutesChange = { durationMinutes = it },
+                    onSecondsChange = { durationSeconds = it }
+                )
 
-                if (enforceCheckinLimit) {
-                    Text("Check-in window", style = MaterialTheme.typography.labelMedium)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = checkinMinutes,
-                            onValueChange = { checkinMinutes = it.filter(Char::isDigit) },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            label = { Text("Min") },
-                            placeholder = { Text("1") }
-                        )
-                        OutlinedTextField(
-                            value = checkinSeconds,
-                            onValueChange = {
-                                val digits = it.filter(Char::isDigit).take(2)
-                                val sec = digits.toIntOrNull()
-                                checkinSeconds = when {
-                                    digits.isEmpty() -> ""
-                                    sec == null -> ""
-                                    sec > 59 -> "59"
-                                    else -> digits.padStart(2, '0')
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            label = { Text("Sec") },
-                            placeholder = { Text("00") }
-                        )
+                EnforceCheckinRow(
+                    enforceCheckinLimit = enforceCheckinLimit,
+                    onToggle = {
+                        enforceCheckinLimit = it
+                        presetSelection = StationPresetSelection.Custom
                     }
-                }
+                )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Auto-start on NFC tap (idle only)", style = MaterialTheme.typography.titleSmall)
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            "Allow guests to start immediately when the station is\n" +
-                                "idle (no active session and an empty queue).",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = autoJoinEnabled,
-                        onCheckedChange = {
-                            if (!operatorManagesSessionsOnly) autoJoinEnabled = it
-                        },
-                        enabled = !operatorManagesSessionsOnly
-                    )
-                }
+                CheckinWindowRow(
+                    enforceCheckinLimit = enforceCheckinLimit,
+                    checkinMinutes = checkinMinutes,
+                    checkinSeconds = checkinSeconds,
+                    onMinutesChange = { checkinMinutes = it },
+                    onSecondsChange = { checkinSeconds = it }
+                )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Only operator can manages sessions", style = MaterialTheme.typography.titleSmall)
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            "Guests cannot start or end sessions. Operators seat guests from queue management.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                AutoStartRow(
+                    autoJoinEnabled = autoJoinEnabled,
+                    operatorManagesSessionsOnly = operatorManagesSessionsOnly,
+                    onToggle = {
+                        autoJoinEnabled = it
+                        presetSelection = StationPresetSelection.Custom
                     }
-                    Switch(
-                        checked = operatorManagesSessionsOnly,
-                        onCheckedChange = {
-                            operatorManagesSessionsOnly = it
-                            if (it) autoJoinEnabled = false
-                        }
-                    )
-                }
+                )
 
-                Text("Join form fields", style = MaterialTheme.typography.titleMedium)
-                if (joinFormFields.isEmpty()) {
-                    Text(
-                        "No fields (guests can join without entering details).",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else {
-                    joinFormFields.forEachIndexed { index, field ->
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = field.label,
-                                    onValueChange = { label ->
-                                        joinFormFields[index] = field.copy(label = label)
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true,
-                                    label = { Text("Label") }
-                                )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        modifier = Modifier.weight(1f),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Checkbox(
-                                            checked = field.required,
-                                            onCheckedChange = { required ->
-                                                joinFormFields[index] = field.copy(
-                                                    required = required
-                                                )
-                                            }
-                                        )
-                                        Text("Required")
-                                    }
-                                    IconButton(onClick = { joinFormFields.removeAt(index) }) {
-                                        Icon(
-                                            Icons.Filled.Delete,
-                                            contentDescription = "Remove field"
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                OperatorManagedRow(
+                    operatorManagesSessionsOnly = operatorManagesSessionsOnly,
+                    onToggle = {
+                        operatorManagesSessionsOnly = it
+                        if (it) autoJoinEnabled = false
+                        presetSelection = StationPresetSelection.Custom
                     }
-                }
-                TextButton(
-                    onClick = {
-                        joinFormFields.add(
-                            JoinFormField(
-                                key = "",
-                                label = "",
-                                required = false
-                            )
-                        )
+                )
+
+                NotificationModeRow(
+                    notificationMode = notificationMode,
+                    onModeChange = {
+                        notificationMode = it
+                        presetSelection = StationPresetSelection.Custom
                     }
-                ) {
-                    Text("Add field")
-                }
+                )
+
+                ShowPositionRow(
+                    showPositionToGuests = showPositionToGuests,
+                    onToggle = {
+                        showPositionToGuests = it
+                        presetSelection = StationPresetSelection.Custom
+                    }
+                )
+
+                JoinFormFieldsEditor(joinFormFields)
 
                 Text("Starting State", style = MaterialTheme.typography.titleMedium)
 
@@ -384,6 +247,8 @@ fun SessionCreationScreen(
                             sessionDurationSeconds = durationTotalSeconds,
                             autoJoinEnabled = autoJoinEnabled,
                             operatorManagesSessionsOnly = operatorManagesSessionsOnly,
+                            notificationMode = notificationMode,
+                            showPositionToGuests = showPositionToGuests,
                             joinFormFields = normalizedFields,
                             enforceCheckinLimit = enforceCheckinLimit,
                             checkinWindowSeconds = checkinTotalSeconds.coerceAtLeast(1)

@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit
 import ca.uwaterloo.cs446.bighero6.ui.UiState
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
 import ca.uwaterloo.cs446.bighero6.viewmodel.StationViewModel
+import ca.uwaterloo.cs446.bighero6.ui.copy.GuestQueueCopy
 
 /** Eligibility at first load — used for auto-navigate only, so we don't react to later changes. */
 private data class InitialEligibility(
@@ -41,6 +42,7 @@ fun StationInfoScreen(
     val stationState by viewModel.stationState.collectAsState()
     val joinState by viewModel.joinState.collectAsState()
     val checkinRemainingByStation by homeViewModel.checkinRemainingByStation.collectAsState()
+    val waitlists by homeViewModel.waitlists.collectAsState()
     var isLeaving by remember { mutableStateOf(false) }
     var initialEligibility by remember(stationId) { mutableStateOf<InitialEligibility?>(null) }
     var didAutoNavigate by remember(stationId) { mutableStateOf(false) }
@@ -73,6 +75,8 @@ fun StationInfoScreen(
                 val isMySessionActive = station.currentSession?.userId == userId
                 val isFirstInLine = isInWaitlist && position == 1
                 val isIdleStation = peopleInLine == 0 && !hasActiveSession
+                val hasReservationForMe = station.currentReservation?.userId == userId
+                val isManualNotification = station.notificationMode == "manual"
                 val showIdleAutoJoinFlow =
                     autoStart &&
                         (initialEligibility?.isIdle == true) &&
@@ -145,24 +149,22 @@ fun StationInfoScreen(
                     isMySessionActive -> "You're currently using this station"
                     showIdleAutoJoinFlow -> // this is likely never seen since in the auto join flow the user goes straigh to Session (timer) view
                         "No one is waiting. Your session will begin immediately."
+                    // Manual notification: if you're first but haven't been notified yet, use softer copy.
+                    isFirstInLine && !hasActiveSession && isManualNotification && !hasReservationForMe ->
+                        GuestQueueCopy.nearFrontManual(station.operatorManagesSessionsOnly).text
+                    // "Your turn" only after an actual reservation/notification.
                     isFirstInLine && !hasActiveSession ->
-                        if (station.operatorManagesSessionsOnly) {
-                            "Your turn! Please return to the host stand to be seated."
-                        } else {
-                            "Your turn! Go to the machine and tap the NFC tag to start your session."
-                        }
+                        GuestQueueCopy.yourTurn(
+                            operatorManagesSessionsOnly = station.operatorManagesSessionsOnly,
+                            notificationMode = station.notificationMode,
+                        ).text
                     isFirstInLine && hasActiveSession ->
-                        if (station.operatorManagesSessionsOnly) {
-                            "You will be notified when your table is ready."
-                        } else {
-                            "You will be notified when the station is ready."
-                        }
+                        GuestQueueCopy.notifiedWhenReady(station.operatorManagesSessionsOnly)
                     isIdleStation && station.autoJoinEnabled ->
-                        if (station.operatorManagesSessionsOnly) {
-                            null
-                        } else {
-                            "Station is available. Tap the NFC tag at the machine to start."
-                        }
+                        GuestQueueCopy.stationAvailable(
+                            autoJoinEnabled = station.autoJoinEnabled,
+                            operatorManagesSessionsOnly = station.operatorManagesSessionsOnly,
+                        )
                     else -> null
                 }
 
@@ -191,13 +193,15 @@ fun StationInfoScreen(
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
                 }
-                Text(
-                    "$peopleInLine ${if (peopleInLine == 1) "person" else "people"} in line",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
+                if (station.showPositionToGuests) {
+                    Text(
+                        "$peopleInLine ${if (peopleInLine == 1) "person" else "people"} in line",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
 
                 when {
                     autoStart && isMySessionActive -> {
@@ -271,23 +275,22 @@ fun StationInfoScreen(
                         }
                     }
                     isInWaitlist -> {
-                        Text(
-                            "You're #$position in line",
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-
-                        if (station.mode == "timed" && position > 0) {
-                            val perPartySeconds = station.sessionDurationSeconds +
-                                (if (station.enforceCheckinLimit) station.checkinWindowSeconds else 0)
-                            val estimateSeconds = (position - 1) * perPartySeconds
-                            val estimateMinutes = (estimateSeconds / 60).coerceAtLeast(0)
-                            val estimateText = when {
-                                estimateMinutes <= 0 -> "Estimated wait: < 1 min"
-                                else -> "Estimated wait: ~${estimateMinutes} min"
-                            }
+                        val summary = waitlists.find { it.stationId == stationId }
+                        val displayPosition = summary?.position
+                        if (displayPosition != null) {
                             Text(
-                                estimateText,
+                                "You're #$displayPosition in line",
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
+
+                        val estimatedWait = summary?.estimatedWaitTime?.takeIf { it.isNotEmpty() }
+                        if (displayPosition != null && station.mode == "timed" &&
+                            estimatedWait != null
+                        ) {
+                            Text(
+                                "Estimated wait: $estimatedWait",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center,

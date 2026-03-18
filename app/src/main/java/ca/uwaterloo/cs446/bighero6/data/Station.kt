@@ -34,6 +34,10 @@ data class Station(
      * (Used for manned waitlists like restaurants.)
      */
     val operatorManagesSessionsOnly: Boolean = false,
+    /** How guests are notified when it's their turn: "auto" or "manual". */
+    val notificationMode: String = "auto",
+    /** Whether guests see explicit position/ETA in the queue UI. */
+    val showPositionToGuests: Boolean = true,
     /** Dynamic fields required/optional when joining the waitlist. */
     val joinFormFields: List<JoinFormField> = emptyList(),
     val enforceCheckinLimit: Boolean = false,

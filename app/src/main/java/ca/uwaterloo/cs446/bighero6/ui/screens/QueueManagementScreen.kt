@@ -304,20 +304,31 @@ fun QueueManagementScreen(
                                                     expanded = attendeeMenuExpanded,
                                                     onDismissRequest = { attendeeMenuExpanded = false }
                                                 ) {
-                                            if (currentSession == null) {
-                                                DropdownMenuItem(
-                                                    text = { Text("Seat / start session") },
-                                                    onClick = {
-                                                        attendeeMenuExpanded = false
-                                                        scope.launch {
-                                                            repository.startSessionAsOperator(
-                                                                stationId,
-                                                                attendee.userId
-                                                            )
-                                                        }
+                                                    if (index == 0) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("Notify guest") },
+                                                            onClick = {
+                                                                attendeeMenuExpanded = false
+                                                                scope.launch {
+                                                                    repository.notifyHead(stationId)
+                                                                }
+                                                            }
+                                                        )
                                                     }
-                                                )
-                                            }
+                                                    if (currentSession == null) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("Seat / start session") },
+                                                            onClick = {
+                                                                attendeeMenuExpanded = false
+                                                                scope.launch {
+                                                                    repository.startSessionAsOperator(
+                                                                        stationId,
+                                                                        attendee.userId
+                                                                    )
+                                                                }
+                                                            }
+                                                        )
+                                                    }
                                                     DropdownMenuItem(
                                                         text = { Text("Bring to front of queue") },
                                                         onClick = {

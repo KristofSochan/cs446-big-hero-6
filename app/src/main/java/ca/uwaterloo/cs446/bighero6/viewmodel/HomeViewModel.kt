@@ -5,25 +5,31 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
+import ca.uwaterloo.cs446.bighero6.ui.copy.GuestQueueCopy
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import java.util.concurrent.TimeUnit
-
 /**
  * Summary of a waitlist for display on home screen
  */
 data class WaitlistSummary(
     val stationId: String,
     val stationName: String,
-    val position: Int,
+    /** Guest-visible queue position. Null when positions are hidden. */
+    val position: Int?,
     val estimatedWaitTime: String,
     val isInSession: Boolean,
     val hasActiveSession: Boolean,
-    val waitingCount: Int
+    val waitingCount: Int,
+    /** True when this user currently has a reservation (has been notified). */
+    val hasReservation: Boolean,
+    /** True when "notifyHead" is operator-driven (manual notification mode). */
+    val isManualNotification: Boolean,
+    /** True when an operator manages seating (guests cannot start/end themselves). */
+    val operatorManagesSessionsOnly: Boolean,
 )
 
 /**
@@ -87,58 +93,49 @@ class HomeViewModel : ViewModel() {
         val isInSession = station.currentSession?.userId == userId
         val hasActiveSession = station.currentSession != null
         val waitingCount = station.attendees.values.count { it.status == "waiting" }
-        val position = if (isInSession) 0 else station.calculatePosition(userId)
+        val showPosition = station.showPositionToGuests
+        val rawPosition = if (isInSession) 0 else station.calculatePosition(userId)
+        val position = if (!showPosition || isInSession) null else rawPosition
         val isTimedMode = station.mode == "timed"
+        val hasReservationForMe = station.currentReservation?.userId == userId
+        val isManualNotification = station.notificationMode == "manual"
+        val operatorManagesSessionsOnly = station.operatorManagesSessionsOnly
 
         val eta = when {
-            !isTimedMode -> ""
+            !isTimedMode || !showPosition -> ""
             isInSession -> "In session"
-            position <= 0 -> ""
-            else -> {
-                val perSessionMinutes = TimeUnit.SECONDS.toMinutes(
-                    station.sessionDurationSeconds.toLong()
-                ).toInt().coerceAtLeast(1)
-
-                // Time remaining in the current session, if any
-                val remainingMinutes = station.currentSession?.expiresAt?.let { expiresAt ->
-                    val nowMillis = System.currentTimeMillis()
-                    val remainingMillis = expiresAt.toDate().time - nowMillis
-                    if (remainingMillis > 0) {
-                        TimeUnit.MILLISECONDS.toMinutes(remainingMillis).toInt().coerceAtLeast(0)
-                    } else {
-                        0
-                    }
-                } ?: 0
-
-                val peopleAhead = (position - 1).coerceAtLeast(0)
-                val queueMinutes = peopleAhead * perSessionMinutes
-                val totalMinutes = remainingMinutes + queueMinutes
-
-                if (totalMinutes <= 0) {
-                    "0 min"
-                } else {
-                    "$totalMinutes min"
-                }
-            }
+            (position ?: 0) <= 0 -> ""
+            else -> GuestQueueCopy.estimatedWait(
+                position = position ?: 0,
+                sessionDurationSeconds = station.sessionDurationSeconds,
+                currentSessionExpiresAtMillis =
+                    station.currentSession?.expiresAt?.toDate()?.time,
+            )
         }
         
         val summary = WaitlistSummary(
-            station.id,
-            station.name,
-            position,
-            eta,
-            isInSession,
-            hasActiveSession,
-            waitingCount
+            stationId = station.id,
+            stationName = station.name,
+            position = position,
+            estimatedWaitTime = eta,
+            isInSession = isInSession,
+            hasActiveSession = hasActiveSession,
+            waitingCount = waitingCount,
+            hasReservation = hasReservationForMe,
+            isManualNotification = isManualNotification,
+            operatorManagesSessionsOnly = operatorManagesSessionsOnly,
         )
         waitlists.value = waitlists.value.filter { it.stationId != station.id } + summary
 
         // Check-in countdown: same pattern as session timer (server initial remaining, then elapsed).
-        val hasReservationForMe = station.enforceCheckinLimit &&
-            station.currentReservation?.userId == userId &&
-            position == 1 &&
+        // Use true queue head position (not the possibly-hidden summary position) so countdown
+        // still runs even when positions are hidden from guests.
+        val isHeadOfQueue = station.calculatePosition(userId) == 1
+        val shouldShowCountdown = station.enforceCheckinLimit &&
+            hasReservationForMe &&
+            isHeadOfQueue &&
             !hasActiveSession
-        if (hasReservationForMe) {
+        if (shouldShowCountdown) {
             if (checkinCountdownJobs[station.id]?.isActive != true) {
                 checkinCountdownJobs[station.id]?.cancel()
                 startCheckinCountdown(station.id, station.checkinWindowSeconds)

@@ -338,6 +338,14 @@ async function advanceQueue(
   // (excludes check-in delay).
   await incrementQueueWaitAnalytics(stationId, now, queueWaitSeconds);
 
+  const notificationMode = station.notificationMode ?? "auto";
+
+  // In manual notification mode, advancing the queue just updates analytics and
+  // leaves it to the operator to notify the guest (via notifyHead callable).
+  if (notificationMode === "manual") {
+    return;
+  }
+
   await notifyUserAtPositionOne(
     nextUserId,
     stationId,
@@ -361,6 +369,27 @@ async function advanceQueue(
   }
 
   const checkinWindowSeconds = station.checkinWindowSeconds ?? 60;
+  await createReservationAndScheduleExpiration({
+    stationRef,
+    userId: nextUserId,
+    checkinWindowSeconds,
+  });
+}
+
+/**
+ * Creates/sets the head reservation window and schedules expiration.
+ */
+async function createReservationAndScheduleExpiration({
+  stationRef,
+  userId,
+  checkinWindowSeconds,
+}: {
+  stationRef: admin.firestore.DocumentReference<StationDoc>;
+  userId: string;
+  checkinWindowSeconds: number;
+}): Promise<void> {
+  const stationId = stationRef.id;
+  const now = admin.firestore.Timestamp.now();
   const expiresAt = new admin.firestore.Timestamp(
     now.seconds + checkinWindowSeconds,
     now.nanoseconds,
@@ -369,7 +398,7 @@ async function advanceQueue(
 
   await stationRef.update({
     currentReservation: {
-      userId: nextUserId,
+      userId,
       expiresAt,
       reservationId,
     },
@@ -450,11 +479,12 @@ async function notifyUserAtPositionOne(
       return;
     }
 
-    // Send notification
+    // Body copy mirrors GuestQueueCopy.yourTurn().
     const body = operatorManagesSessionsOnly ?
-      `You're next in line for ${stationName}. ` +
+      `Your turn at ${stationName}! ` +
         "Please return to the host stand to be seated." :
-      `You're next in line for ${stationName}. ` + "Tap the NFC tag to start.";
+      `Your turn at ${stationName}! ` +
+        "Tap the NFC tag to start your session.";
     const message = {
       notification: {
         title: "It's Your Turn!",
@@ -537,6 +567,60 @@ export const getReservationTime = onCall(
     };
   },
 );
+
+/**
+ * Callable: Notify the current head of the queue and, if enforceCheckinLimit is
+ * enabled, start a check-in window for them. In manual notification mode this
+ * is the primary way guests are notified; in auto mode it can be used to
+ * resend the notification.
+ */
+export const notifyHead = onCall({region: REGION}, async (request) => {
+  const stationId = request.data?.stationId;
+  if (!stationId || typeof stationId !== "string") {
+    throw new HttpsError("invalid-argument", "stationId required");
+  }
+
+  const db = admin.firestore();
+  const stationRef = db.collection("stations").doc(stationId);
+  const snap = await stationRef.get();
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "Station not found");
+  }
+
+  const station = snap.data() as StationDoc;
+  const attendeesMap = station.attendees || {};
+  const attendees = Object.values(attendeesMap) as Attendee[];
+  const waitingAttendees = attendees
+    .filter((a) => a.status === "waiting")
+    .sort((a, b) => a.joinedAt.toMillis() - b.joinedAt.toMillis());
+
+  if (waitingAttendees.length === 0) return;
+
+  const nextUserId = waitingAttendees[0].userId;
+  const operatorOnly = station.operatorManagesSessionsOnly ?? false;
+
+  await notifyUserAtPositionOne(
+    nextUserId,
+    stationId,
+    station.name,
+    operatorOnly,
+  );
+
+  // If check-in enforcement is off, notifying the guest is all we do.
+  if (!station.enforceCheckinLimit) return;
+
+  // If a reservation already exists for this user, don't reset it.
+  const existingReservation = station.currentReservation;
+  if (existingReservation && existingReservation.userId === nextUserId) return;
+
+  // Create the grace-period reservation window.
+  const checkinWindowSeconds = station.checkinWindowSeconds ?? 60;
+  await createReservationAndScheduleExpiration({
+    stationRef: stationRef as admin.firestore.DocumentReference<StationDoc>,
+    userId: nextUserId,
+    checkinWindowSeconds,
+  });
+});
 
 /**
  * Cloud Task handler that expires a session

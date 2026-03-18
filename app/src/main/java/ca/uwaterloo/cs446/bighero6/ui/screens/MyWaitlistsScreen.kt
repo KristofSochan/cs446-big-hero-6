@@ -17,6 +17,7 @@ import androidx.navigation.NavController
 import java.util.concurrent.TimeUnit
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.ui.components.TapListScaffold
+import ca.uwaterloo.cs446.bighero6.ui.copy.GuestQueueCopy
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
 import ca.uwaterloo.cs446.bighero6.viewmodel.HomeViewModel
 
@@ -112,21 +113,24 @@ fun MyWaitlistsScreen(
                                     fontWeight = FontWeight.Bold
                                 )
 
+                                val checkinRemainingMs =
+                                    checkinRemainingByStation[waitlist.stationId]
                                 when {
                                     waitlist.isInSession -> {
                                         Text("You're currently using ${waitlist.stationName}")
                                     }
 
-                                    waitlist.position == 1 && !waitlist.hasActiveSession -> {
-                                        Text("Your turn", fontWeight = FontWeight.SemiBold)
+                                    waitlist.hasReservation && !waitlist.hasActiveSession -> {
+                                        Text("Your turn!", fontWeight = FontWeight.SemiBold)
                                         Text(
-                                            "Go to the station to start your session.",
+                                            GuestQueueCopy.yourTurn(
+                                                operatorManagesSessionsOnly = waitlist.operatorManagesSessionsOnly,
+                                                notificationMode = if (waitlist.isManualNotification) "manual" else "auto",
+                                            ).text,
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.padding(top = 8.dp)
                                         )
-                                        val checkinRemainingMs =
-                                            checkinRemainingByStation[waitlist.stationId]
                                         if (checkinRemainingMs != null && checkinRemainingMs > 0) {
                                             val minutes =
                                                 TimeUnit.MILLISECONDS.toMinutes(checkinRemainingMs)
@@ -144,17 +148,41 @@ fun MyWaitlistsScreen(
                                     waitlist.position == 1 && waitlist.hasActiveSession -> {
                                         Text("You're next in line")
                                         Text(
-                                            "You'll be notified when the machine is ready.",
+                                            GuestQueueCopy.notifiedWguhenReady(
+                                                operatorManagesSessionsOnly = waitlist.operatorManagesSessionsOnly
+                                            ),
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(top = 8.dp)
                                         )
                                     }
 
-                                    waitlist.position > 1 -> {
-                                        Text("Position: ${waitlist.position}")
-                                        if (waitlist.estimatedWaitTime.isNotEmpty()) {
-                                            Text("Estimated wait: ${waitlist.estimatedWaitTime}")
+                                    // Not reserved/in-session: user is in the queue.
+                                    if (waitlist.position == null) {
+                                        Text(
+                                            GuestQueueCopy.hiddenInLine(),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(top = 8.dp)
+                                        )
+                                    } else {
+                                        val inLineCopy = GuestQueueCopy.inLine(
+                                            position = waitlist.position,
+                                            estimatedWaitTime = waitlist.estimatedWaitTime,
+                                        )
+                                        Text(
+                                            inLineCopy.positionText,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(top = 8.dp)
+                                        )
+                                        inLineCopy.estimatedWaitText?.let { eta ->
+                                            Text(
+                                                eta,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(top = 4.dp)
+                                            )
                                         }
                                     }
                                 }

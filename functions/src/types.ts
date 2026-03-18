@@ -30,6 +30,8 @@ export interface CurrentReservation {
   reservationId?: string;
 }
 
+export type NotificationMode = "auto" | "manual";
+
 export interface Station {
   name: string;
   isActive: boolean;
@@ -37,6 +39,8 @@ export interface Station {
   sessionDurationSeconds?: number;
   autoJoinEnabled?: boolean;
   operatorManagesSessionsOnly?: boolean;
+   notificationMode?: NotificationMode;
+   showPositionToGuests?: boolean;
   joinFormFields?: JoinFormField[];
   enforceCheckinLimit?: boolean;
   checkinWindowSeconds?: number;

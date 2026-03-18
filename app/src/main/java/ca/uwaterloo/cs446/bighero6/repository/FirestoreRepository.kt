@@ -315,6 +315,22 @@ class FirestoreRepository {
     }
     
     /**
+     * Notify the current head of the queue and, if check-in enforcement is
+     * enabled, start a check-in window for them.
+     */
+    suspend fun notifyHead(stationId: String): Result<Unit> {
+        return try {
+            functions
+                .getHttpsCallable("notifyHead")
+                .call(hashMapOf("stationId" to stationId))
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
      * Check if user is already in waitlist
      */
     suspend fun isUserInWaitlist(stationId: String, userId: String): Boolean {
