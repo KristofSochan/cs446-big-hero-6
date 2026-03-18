@@ -53,7 +53,7 @@ fun MyWaitlistsScreen(
                     onClick = {
                         navController.navigate(
                             Screen.StationInfo("").createRoute(
-                                "261a3fc5-831a-4848-ae8a-202fc795dcf4",
+                                "91a7360c-1a1b-4948-af0d-e679ab41805b",
                                 autoStart = true
                             )
                         )

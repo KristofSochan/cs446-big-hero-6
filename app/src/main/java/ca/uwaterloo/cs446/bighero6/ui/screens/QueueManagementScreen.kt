@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.data.Station
+import ca.uwaterloo.cs446.bighero6.data.User
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import kotlinx.coroutines.launch
@@ -31,11 +32,29 @@ fun QueueManagementScreen(
     val repository = remember { FirestoreRepository() }
     val scope = rememberCoroutineScope()
     var showMenu by remember { mutableStateOf(false) }
+    val userCache = remember { mutableStateMapOf<String, User>() }
 
     DisposableEffect(stationId) {
         val registration = repository.subscribeToStation(stationId) { updatedStation ->
             station = updatedStation
             isLoading = false
+            
+            // Fetch missing user names for attendees and current session
+            updatedStation?.let { s ->
+                val userIdsToFetch = (s.attendees.keys + (s.currentSession?.userId?.let { setOf(it) } ?: emptySet()))
+                    .filter { it !in userCache }
+                
+                userIdsToFetch.forEach { uid ->
+                    scope.launch {
+                        try {
+                            val user = repository.getOrCreateUser(uid)
+                            userCache[uid] = user
+                        } catch (e: Exception) {
+                            // Silently fail or use placeholder
+                        }
+                    }
+                }
+            }
         }
         onDispose {
             registration.remove()
@@ -53,8 +72,7 @@ fun QueueManagementScreen(
                             contentDescription = "Back"
                         )
                     }
-                }
-                ,
+                },
                 actions = {
                     Box {
                         IconButton(onClick = { showMenu = true }) {
@@ -133,6 +151,7 @@ fun QueueManagementScreen(
                         
                         val startedAtDate = session.startedAt?.toDate()
                         val timeFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
+                        val userName = userCache[session.userId]?.name?.ifEmpty { null } ?: "${session.userId?.take(8)}..."
                         
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -149,7 +168,7 @@ fun QueueManagementScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "${session.userId?.take(8) ?: "Unknown"}...",
+                                        text = userName,
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -218,7 +237,8 @@ fun QueueManagementScreen(
                             itemsIndexed(attendees) { index, attendee ->
                                 val joinedAtDate = attendee.joinedAt.toDate()
                                 val timeFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
-                                
+                                val attendeeName = userCache[attendee.userId]?.name?.ifEmpty { null } ?: "${attendee.userId.take(8)}..."
+
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = CardDefaults.cardColors(
@@ -234,7 +254,7 @@ fun QueueManagementScreen(
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "${index + 1}. ${attendee.userId.take(8)}...",
+                                                text = "${index + 1}. $attendeeName",
                                                 style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold
                                             )
