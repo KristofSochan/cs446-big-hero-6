@@ -6,6 +6,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -32,9 +33,11 @@ fun SignUpScreen(navController: NavController) {
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Sign Up",
-            style = MaterialTheme.typography.headlineLarge,
-            modifier = Modifier.padding(bottom = 32.dp)
+            text = "TapList",
+            style = MaterialTheme.typography.displayMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 48.dp)
         )
 
         OutlinedTextField(
@@ -105,7 +108,7 @@ fun SignUpScreen(navController: NavController) {
                                 }
                                 user?.updateProfile(profileUpdates)?.addOnCompleteListener {
                                     isLoading = false
-                                    navController.navigate(Screen.UserSetup.createRoute(name)) {
+                                    navController.navigate(Screen.MyWaitlists.route) {
                                         popUpTo(Screen.SignUp.route) { inclusive = true }
                                     }
                                 }
