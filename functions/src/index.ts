@@ -370,7 +370,7 @@ async function advanceQueue(
 
   const checkinWindowSeconds = station.checkinWindowSeconds ?? 60;
   await createReservationAndScheduleExpiration({
-    stationRef,
+    stationRef: stationRef as admin.firestore.DocumentReference<StationDoc>,
     userId: nextUserId,
     checkinWindowSeconds,
   });
