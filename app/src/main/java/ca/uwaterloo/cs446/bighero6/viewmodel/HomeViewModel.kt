@@ -18,8 +18,9 @@ import kotlinx.coroutines.launch
 data class WaitlistSummary(
     val stationId: String,
     val stationName: String,
-    /** Guest-visible queue position. Null when positions are hidden. */
-    val position: Int?,
+    /** Real position (1-based). */
+    val position: Int,
+    val showPositionToGuests: Boolean,
     val estimatedWaitTime: String,
     val isInSession: Boolean,
     val hasActiveSession: Boolean,
@@ -94,19 +95,18 @@ class HomeViewModel : ViewModel() {
         val hasActiveSession = station.currentSession != null
         val waitingCount = station.attendees.values.count { it.status == "waiting" }
         val showPosition = station.showPositionToGuests
-        val rawPosition = if (isInSession) 0 else station.calculatePosition(userId)
-        val position = if (!showPosition || isInSession) null else rawPosition
+        val position = if (isInSession) 0 else station.calculatePosition(userId)
         val isTimedMode = station.mode == "timed"
         val hasReservationForMe = station.currentReservation?.userId == userId
         val isManualNotification = station.notificationMode == "manual"
         val operatorManagesSessionsOnly = station.operatorManagesSessionsOnly
 
         val eta = when {
-            !isTimedMode || !showPosition -> ""
+            !isTimedMode -> ""
             isInSession -> "In session"
-            (position ?: 0) <= 0 -> ""
+            position <= 0 -> ""
             else -> GuestQueueCopy.estimatedWait(
-                position = position ?: 0,
+                position = position,
                 sessionDurationSeconds = station.sessionDurationSeconds,
                 currentSessionExpiresAtMillis =
                     station.currentSession?.expiresAt?.toDate()?.time,
@@ -117,6 +117,7 @@ class HomeViewModel : ViewModel() {
             stationId = station.id,
             stationName = station.name,
             position = position,
+            showPositionToGuests = showPosition,
             estimatedWaitTime = eta,
             isInSession = isInSession,
             hasActiveSession = hasActiveSession,
@@ -128,8 +129,6 @@ class HomeViewModel : ViewModel() {
         waitlists.value = waitlists.value.filter { it.stationId != station.id } + summary
 
         // Check-in countdown: same pattern as session timer (server initial remaining, then elapsed).
-        // Use true queue head position (not the possibly-hidden summary position) so countdown
-        // still runs even when positions are hidden from guests.
         val isHeadOfQueue = station.calculatePosition(userId) == 1
         val shouldShowCountdown = station.enforceCheckinLimit &&
             hasReservationForMe &&
@@ -147,11 +146,6 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Starts check-in countdown: shows provisional timer from checkinWindowSeconds immediately,
-     * then switches to server-derived remaining when getReservationTime returns (same pattern as
-     * session timer).
-     */
     private fun startCheckinCountdown(stationId: String, checkinWindowSeconds: Int) {
         val durationMs = (checkinWindowSeconds * 1000L).coerceAtLeast(1000L)
 

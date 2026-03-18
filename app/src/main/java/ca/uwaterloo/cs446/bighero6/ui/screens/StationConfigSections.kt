@@ -51,19 +51,22 @@ fun StationPresetRow(
             selected = selection == StationPresetSelection.SelfServe,
             onClick = onSelfServe,
             shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
-            label = { Text("Self-serve") }
+            label = { Text("Self-serve") },
+            icon = {}
         )
         SegmentedButton(
             selected = selection == StationPresetSelection.Manned,
             onClick = onManned,
             shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
-            label = { Text("Manned waitlist") }
+            label = { Text("Manned") },
+            icon = {}
         )
         SegmentedButton(
             selected = selection == StationPresetSelection.Custom,
             onClick = { /* Custom is a derived state; no-op on tap */ },
             shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
-            label = { Text("Custom") }
+            label = { Text("Custom") },
+            icon = {}
         )
     }
     Spacer(Modifier.height(8.dp))
@@ -469,4 +472,3 @@ fun applyMannedPreset(
     setIsTimed(false)
     setAutoJoinEnabled(false)
 }
-

@@ -8,6 +8,12 @@ import java.util.concurrent.TimeUnit
  * Keep this file free of Compose and Firebase so it can be reused anywhere.
  */
 object GuestQueueCopy {
+    data class StatusInfo(
+        val primaryText: String,
+        val secondaryText: String? = null,
+        val isPrimaryHighlighted: Boolean = false,
+    )
+
     data class NearFrontCopy(
         val text: String,
     )
@@ -29,45 +35,34 @@ object GuestQueueCopy {
     fun nearFrontManual(
         operatorManagesSessionsOnly: Boolean,
     ): NearFrontCopy {
-        return if (operatorManagesSessionsOnly) {
-            NearFrontCopy("You’re near the front. The host will notify you when your table is ready.")
-        } else {
-            NearFrontCopy("You’re near the front. You’ll be notified when the station is ready.")
-        }
+        return NearFrontCopy(notifiedWhenReady(operatorManagesSessionsOnly))
     }
 
     /**
      * Used for the "Your turn" case (reserved/notify already happened and user is not in an active session).
+     * These strings are usually used as secondary text under a "Your turn!" header.
      */
     fun yourTurn(
         operatorManagesSessionsOnly: Boolean,
         notificationMode: String,
     ): YourTurnCopy {
-        // notificationMode check mainly exists to ensure future-proofing; StationInfoScreen/MyWaitlistsScreen
-        // already call the right branch.
         val isManual = notificationMode == "manual"
         if (!isManual) {
-            // self-serve defaults
-            return YourTurnCopy("Your turn! Go to the machine and tap the NFC tag to start your session.")
+            return YourTurnCopy("Go to the machine and tap the NFC tag to start your session.")
         }
 
         return if (operatorManagesSessionsOnly) {
-            YourTurnCopy("Your turn! Please return to the host stand to be seated.")
+            YourTurnCopy("Please return to the host stand to be seated.")
         } else {
-            YourTurnCopy("Your turn! Go to the station to start your session.")
+            YourTurnCopy("Go to the station to start your session.")
         }
     }
 
     fun notifiedWhenReady(operatorManagesSessionsOnly: Boolean): String {
-        return if (operatorManagesSessionsOnly) {
-            "You will be notified when your table is ready."
-        } else {
-            "You will be notified when the station is ready."
-        }
+        return "You will be notified when it’s your turn."
     }
 
     fun stationAvailable(autoJoinEnabled: Boolean, operatorManagesSessionsOnly: Boolean): String? {
-        // StationInfo shows this only for autoJoin-enabled idle.
         if (!autoJoinEnabled) return null
         return if (operatorManagesSessionsOnly) {
             null
@@ -78,8 +73,6 @@ object GuestQueueCopy {
 
     /**
      * Computes the estimated wait time string for a guest in the queue.
-     * Pass [currentSessionExpiresAtMillis] from the active session's expiresAt (or null).
-     * Returns e.g. "5 min" or "0 min".
      */
     fun estimatedWait(
         position: Int,
@@ -123,5 +116,66 @@ object GuestQueueCopy {
             },
         )
     }
-}
 
+    /**
+     * Main entry point for user-specific status text to ensure consistency across screens.
+     */
+    fun getStatus(
+        position: Int, // Real position (1-based)
+        showPositionToGuests: Boolean,
+        hasReservation: Boolean,
+        hasActiveSession: Boolean,
+        isInSession: Boolean,
+        isManualNotification: Boolean,
+        operatorManagesSessionsOnly: Boolean,
+        estimatedWaitTime: String = "",
+        stationName: String = ""
+    ): StatusInfo {
+        if (isInSession) {
+            return StatusInfo(
+                primaryText = if (stationName.isNotEmpty()) {
+                    "You're currently using $stationName"
+                } else {
+                    "You're currently using this station"
+                }
+            )
+        }
+
+        // Case: Your turn (notified/reserved but session not started yet)
+        if (hasReservation && !hasActiveSession) {
+            return StatusInfo(
+                primaryText = "Your turn!",
+                secondaryText = yourTurn(
+                    operatorManagesSessionsOnly,
+                    if (isManualNotification) "manual" else "auto"
+                ).text,
+                isPrimaryHighlighted = true
+            )
+        }
+
+        // If positions are hidden, show a consistent message regardless of relative position.
+        // This is important for "manned" mode where the operator might seat people out of order.
+        if (!showPositionToGuests) {
+            return if (isManualNotification) {
+                StatusInfo(primaryText = notifiedWhenReady(operatorManagesSessionsOnly))
+            } else {
+                StatusInfo(primaryText = hiddenInLine())
+            }
+        }
+
+        // Case: Next in line (Position 1) - Positions ARE shown here
+        if (position == 1) {
+            return StatusInfo(
+                primaryText = "You're next in line",
+                secondaryText = notifiedWhenReady(operatorManagesSessionsOnly)
+            )
+        }
+
+        // Case: Default in line with position shown
+        val lineInfo = inLine(position, estimatedWaitTime)
+        return StatusInfo(
+            primaryText = lineInfo.positionText,
+            secondaryText = lineInfo.estimatedWaitText
+        )
+    }
+}

@@ -15,6 +15,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.activity.ComponentActivity
 import androidx.navigation.NavController
 import java.util.concurrent.TimeUnit
+import java.util.Locale
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.ui.components.TapListScaffold
 import ca.uwaterloo.cs446.bighero6.ui.copy.GuestQueueCopy
@@ -36,7 +37,6 @@ fun MyWaitlistsScreen(
     val context = LocalContext.current
     val waitlists by viewModel.waitlists.collectAsState()
     val checkinRemainingByStation by viewModel.checkinRemainingByStation.collectAsState()
-    var userId by remember { mutableStateOf(DeviceIdManager.getUserId(context)) }
     
     LaunchedEffect(Unit) {
         viewModel.subscribeToWaitlists(context)
@@ -50,12 +50,12 @@ fun MyWaitlistsScreen(
             Text("My Waitlists", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 8.dp))
             
             if (SHOW_SIMULATE_NFC_BUTTON) {
-                val HARD_CODED_TEST_STATION_ID = "91a7360c-1a1b-4948-af0d-e679ab41805b"
+                val hardCodedTestStationId = "91a7360c-1a1b-4948-af0d-e679ab41805b"
                 Button(
                     onClick = {
                         navController.navigate(
                             Screen.StationInfo("").createRoute(
-                                HARD_CODED_TEST_STATION_ID,
+                                hardCodedTestStationId,
                                 autoStart = true
                             )
                         )
@@ -69,7 +69,7 @@ fun MyWaitlistsScreen(
             if (SHOW_RESET_USER_ID_BUTTON) {
                 Button(
                     onClick = {
-                        userId = DeviceIdManager.resetUserId(context)
+                        DeviceIdManager.resetUserId(context)
                     },
                     modifier = Modifier.padding(bottom = 16.dp),
                     colors = ButtonDefaults.buttonColors(
@@ -115,76 +115,52 @@ fun MyWaitlistsScreen(
 
                                 val checkinRemainingMs =
                                     checkinRemainingByStation[waitlist.stationId]
-                                when {
-                                    waitlist.isInSession -> {
-                                        Text("You're currently using ${waitlist.stationName}")
-                                    }
+                                
+                                val statusInfo = GuestQueueCopy.getStatus(
+                                    position = waitlist.position,
+                                    showPositionToGuests = waitlist.showPositionToGuests,
+                                    hasReservation = waitlist.hasReservation,
+                                    hasActiveSession = waitlist.hasActiveSession,
+                                    isInSession = waitlist.isInSession,
+                                    isManualNotification = waitlist.isManualNotification,
+                                    operatorManagesSessionsOnly = waitlist.operatorManagesSessionsOnly,
+                                    estimatedWaitTime = waitlist.estimatedWaitTime,
+                                    stationName = waitlist.stationName
+                                )
 
-                                    waitlist.hasReservation && !waitlist.hasActiveSession -> {
-                                        Text("Your turn!", fontWeight = FontWeight.SemiBold)
-                                        Text(
-                                            GuestQueueCopy.yourTurn(
-                                                operatorManagesSessionsOnly = waitlist.operatorManagesSessionsOnly,
-                                                notificationMode = if (waitlist.isManualNotification) "manual" else "auto",
-                                            ).text,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(top = 8.dp)
-                                        )
-                                        if (checkinRemainingMs != null && checkinRemainingMs > 0) {
-                                            val minutes =
-                                                TimeUnit.MILLISECONDS.toMinutes(checkinRemainingMs)
-                                            val seconds =
-                                                TimeUnit.MILLISECONDS.toSeconds(checkinRemainingMs) % 60
-                                            Text(
-                                                "Check in within ${String.format("%d:%02d", minutes, seconds)}",
-                                                style = MaterialTheme.typography.labelLarge,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.padding(top = 4.dp)
-                                            )
-                                        }
-                                    }
-
-                                    waitlist.position == 1 && waitlist.hasActiveSession -> {
-                                        Text("You're next in line")
-                                        Text(
-                                            GuestQueueCopy.notifiedWguhenReady(
-                                                operatorManagesSessionsOnly = waitlist.operatorManagesSessionsOnly
-                                            ),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(top = 8.dp)
-                                        )
-                                    }
-
-                                    // Not reserved/in-session: user is in the queue.
-                                    if (waitlist.position == null) {
-                                        Text(
-                                            GuestQueueCopy.hiddenInLine(),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(top = 8.dp)
-                                        )
+                                Text(
+                                    statusInfo.primaryText,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (statusInfo.isPrimaryHighlighted) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (statusInfo.isPrimaryHighlighted) {
+                                        MaterialTheme.colorScheme.primary
                                     } else {
-                                        val inLineCopy = GuestQueueCopy.inLine(
-                                            position = waitlist.position,
-                                            estimatedWaitTime = waitlist.estimatedWaitTime,
-                                        )
-                                        Text(
-                                            inLineCopy.positionText,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(top = 8.dp)
-                                        )
-                                        inLineCopy.estimatedWaitText?.let { eta ->
-                                            Text(
-                                                eta,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(top = 4.dp)
-                                            )
-                                        }
-                                    }
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+
+                                statusInfo.secondaryText?.let { sec ->
+                                    Text(
+                                        sec,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+
+                                if (waitlist.hasReservation && !waitlist.hasActiveSession && 
+                                    checkinRemainingMs != null && checkinRemainingMs > 0) {
+                                    val minutes =
+                                        TimeUnit.MILLISECONDS.toMinutes(checkinRemainingMs)
+                                    val seconds =
+                                        TimeUnit.MILLISECONDS.toSeconds(checkinRemainingMs) % 60
+                                    Text(
+                                        "Check in within ${String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)}",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
                                 }
                             }
                         }
