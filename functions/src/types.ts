@@ -39,8 +39,8 @@ export interface Station {
   sessionDurationSeconds?: number;
   autoJoinEnabled?: boolean;
   operatorManagesSessionsOnly?: boolean;
-   notificationMode?: NotificationMode;
-   showPositionToGuests?: boolean;
+  notificationMode?: NotificationMode;
+  showPositionToGuests?: boolean;
   joinFormFields?: JoinFormField[];
   enforceCheckinLimit?: boolean;
   checkinWindowSeconds?: number;
