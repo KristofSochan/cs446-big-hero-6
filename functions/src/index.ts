@@ -139,6 +139,9 @@ function analyticsIncrementNoShowTx(
 export const onStationUpdate = onDocumentUpdated(
   {document: "stations/{stationId}", region: REGION},
   async (event) => {
+      // before is the previous version of the document
+     // after is the current version of the document
+
     const before = event.data?.before.data() as StationDoc | undefined;
     const after = event.data?.after.data() as StationDoc | undefined;
     const stationId = event.params.stationId;
