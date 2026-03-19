@@ -484,6 +484,56 @@ async function notifyUserAtPositionOne(
   }
 }
 
+
+// Notify a user when a session has expired and they are no longer at HOL
+// Used when they did not join the head of line in time
+// Open to new names for this
+async function notifyUserSessionExpired(
+ userId: string,
+ stationId: string,
+ stationName: string,
+) {
+ try {
+   // Get user's FCM token
+   const userDoc = await admin
+     .firestore()
+     .collection("users")
+     .doc(userId)
+     .get();
+
+   if (!userDoc.exists) {
+     logger.warn(`User ${userId} not found`);
+     return;
+   }
+
+   const fcmToken = userDoc.data()?.fcmToken;
+   if (!fcmToken) {
+     logger.info(`No FCM token for user ${userId} - skipping notification`);
+     return;
+   }
+
+   // Send notification
+   const message = {
+     notification: {
+       title: "You've been removed from line.",
+       body:
+         `You did not arrive at ${stationName} to begin your session. ` +
+         "Tap the NFC tag again to rejoin the line.",
+     },
+     data: {
+       stationId: stationId,
+       type: "did_not_join",
+     },
+     token: fcmToken,
+   };
+
+   await admin.messaging().send(message);
+   logger.info(`Notification sent to user ${userId} for station ${stationId}`);
+ } catch (error) {
+   logger.error(`Error sending notification to user ${userId}:`, error);
+ }
+}
+
 /**
  * Callable: returns server time and session expiry for elapsed-only countdown.
  * Client uses initialRemaining = (expiresAtMillis - serverTimeMillis) / 1000
@@ -905,6 +955,7 @@ export const expireSession = onTaskDispatched(
           typeof latestSession.sessionId === "string" ?
             latestSession.sessionId :
             null;
+
         if (sessionId && latestSessionId && latestSessionId !== sessionId) {
           logger.info(
             "Ignoring stale expireSession task in transaction for station " +
@@ -929,6 +980,13 @@ export const expireSession = onTaskDispatched(
           tx.update(userRef, {
             currentWaitlists: admin.firestore.FieldValue.arrayRemove(stationId),
           });
+
+          // we have a valid userID to send a "timed out" message to
+          const stationName =
+            typeof station.name === "string" ?
+                station.name :
+                null;
+          notifyUserSessionExpired(userIdToUpdate, stationId, stationName)
         }
       });
 
