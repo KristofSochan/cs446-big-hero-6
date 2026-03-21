@@ -214,7 +214,8 @@ class FirestoreRepository {
     }
 
     /**
-     * Remove user from waitlist (transaction-safe)
+     * Remove user from waitlist (transaction-safe).
+     * Also clears currentReservation if it belongs to this user.
      */
     suspend fun removeFromWaitlist(stationId: String, userId: String): Result<Unit> {
         return try {
@@ -226,6 +227,11 @@ class FirestoreRepository {
                     transaction.update(stationRef, "attendees.$userId", FieldValue.delete())
                     val userRef = db.collection("users").document(userId)
                     transaction.update(userRef, "currentWaitlists", FieldValue.arrayRemove(stationId))
+                    
+                    // Clear reservation if it belongs to this user
+                    if (station.currentReservation?.userId == userId) {
+                        transaction.update(stationRef, "currentReservation", FieldValue.delete())
+                    }
                 }
             }.await()
             Result.success(Unit)
