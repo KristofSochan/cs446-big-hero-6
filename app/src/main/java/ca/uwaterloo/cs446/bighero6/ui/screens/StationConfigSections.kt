@@ -474,26 +474,39 @@ fun applyMannedPreset(
 
 /**
  * Normalizes JoinFormField keys based on their labels.
+ * 
+ * This follows the "Sticky Key" pattern:
+ * 1. If a field already has a key, it is PRESERVED. This prevents breaking
+ *    existing data in Firestore if a label is renamed.
+ * 2. New fields (empty key) generate a slug from the label.
+ * 3. Collisions are avoided by pre-scanning existing keys.
  */
 fun normalizeJoinFormFields(
     fields: List<JoinFormField>
 ): List<JoinFormField> {
-    val usedKeys = mutableSetOf<String>()
+    val usedKeys = fields.mapNotNull { it.key.ifBlank { null } }.toMutableSet()
+    
     return fields.mapIndexed { index, field ->
-        val base = field.label.trim().lowercase()
-        var key = base
-            .replace("\\s+".toRegex(), "_")
-            .replace("[^a-z0-9_]".toRegex(), "")
-        if (key.isBlank()) {
-            key = "field${index + 1}"
+        if (field.key.isNotBlank()) {
+            field
+        } else {
+            val base = field.label.trim().lowercase()
+            var slug = base
+                .replace("\\s+".toRegex(), "_")
+                .replace("[^a-z0-9_]".toRegex(), "")
+            
+            if (slug.isBlank()) {
+                slug = "field${index + 1}"
+            }
+            
+            var uniqueKey = slug
+            var suffix = 2
+            while (usedKeys.contains(uniqueKey)) {
+                uniqueKey = "${slug}_$suffix"
+                suffix++
+            }
+            usedKeys.add(uniqueKey)
+            field.copy(key = uniqueKey)
         }
-        var uniqueKey = key
-        var suffix = 2
-        while (usedKeys.contains(uniqueKey)) {
-            uniqueKey = "${key}_$suffix"
-            suffix++
-        }
-        usedKeys.add(uniqueKey)
-        field.copy(key = uniqueKey)
     }
 }
