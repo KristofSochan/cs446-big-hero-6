@@ -29,6 +29,7 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
     val endSessionState by viewModel.endSessionState.collectAsState()
     var stationName by remember { mutableStateOf<String?>(null) }
     var isTimedMode by remember { mutableStateOf(false) }
+    var operatorManagesSessionsOnly by remember { mutableStateOf(false) }
     var startError by remember { mutableStateOf<String?>(null) }
     val repository = remember { FirestoreRepository() }
 
@@ -36,18 +37,27 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
         val station = repository.getStation(stationId)
         stationName = station?.name
         isTimedMode = station?.mode == "timed"
+        operatorManagesSessionsOnly = station?.operatorManagesSessionsOnly == true
         val userId = DeviceIdManager.getUserId(context)
         when {
             station == null -> startError = "Station not found"
 
             // Already in a session on this station: just show the timer.
             station.currentSession?.userId == userId -> {
-                viewModel.startSessionTimer(stationId)
+                viewModel.startSessionTimer(stationId, operatorManagesSessionsOnly)
             }
 
             // Idle or head of queue: try to start session. One transaction wins; if we lose, join queue.
             station.currentSession == null && (station.attendees.isEmpty() || station.isAtPositionOne(userId)) -> {
                 val isIdle = station.attendees.isEmpty()
+                if (station.operatorManagesSessionsOnly) {
+                    // Operator-managed sessions: guests cannot start sessions.
+                    navController.popBackStack()
+                    navController.navigate(
+                        Screen.StationInfo("").createRoute(stationId, autoStart = false)
+                    )
+                    return@LaunchedEffect
+                }
                 if (isIdle && !station.autoJoinEnabled) {
                     // Auto-join is disabled: an NFC tap on an idle station should NOT
                     // immediately start a session. Show the info screen instead.
@@ -69,7 +79,7 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
                     station.mode.ifEmpty { "manual" }
                 )
                 if (startResult.isSuccess) {
-                    viewModel.startSessionTimer(stationId)
+                    viewModel.startSessionTimer(stationId, operatorManagesSessionsOnly)
                 } else {
                     ensureInQueueAndNavigateToStationInfo(
                         stationId = stationId,
@@ -96,15 +106,6 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
 
     LaunchedEffect(isExpired) {
         if (isExpired) {
-            kotlinx.coroutines.delay(2000)
-            navController.navigate(Screen.MyWaitlists.route) {
-                popUpTo(Screen.MyWaitlists.route) { inclusive = false }
-            }
-        }
-    }
-
-    LaunchedEffect(endSessionState) {
-        if (endSessionState is SessionViewModel.EndSessionState.Success) {
             navController.navigate(Screen.MyWaitlists.route) {
                 popUpTo(Screen.MyWaitlists.route) { inclusive = false }
             }
@@ -121,9 +122,6 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
             TextButton(onClick = {
                 navController.navigate(Screen.MyWaitlists.route) { popUpTo(Screen.MyWaitlists.route) { inclusive = false } }
             }) { Text("Back to My Waitlists") }
-        } else if (isExpired) {
-            Text("Session Ended", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 8.dp))
-            Text("Returning to My Waitlists...", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             Text("Session Active", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 8.dp))
 
@@ -148,18 +146,22 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
                 contentAlignment = Alignment.Center
             ) {
                 if (isTimedMode) {
-                    val endingDueToExpiry =
-                        timeRemaining == 0L && !isExpired &&
-                        endSessionState is SessionViewModel.EndSessionState.Loading
-                    val waitingForServer =
-                        timeRemaining == 0L && !isExpired && !endingDueToExpiry
+                    val isZero = timeRemaining == 0L
+                    val endingState =
+                        isZero && (endSessionState is SessionViewModel.EndSessionState.Loading ||
+                            endSessionState is SessionViewModel.EndSessionState.Success ||
+                            isExpired)
+                    val startingState =
+                        isZero && !isExpired &&
+                            endSessionState !is SessionViewModel.EndSessionState.Loading &&
+                            endSessionState !is SessionViewModel.EndSessionState.Success
                     when {
-                        endingDueToExpiry -> Text(
+                        endingState -> Text(
                             "Ending session…",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        waitingForServer -> Text(
+                        startingState -> Text(
                             "Starting…",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -190,12 +192,18 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
                 else -> {}
             }
 
-            Button(
-                onClick = { viewModel.endSession(stationId) },
-                enabled = endSessionState !is SessionViewModel.EndSessionState.Loading,
-                modifier = Modifier.padding(top = 8.dp)
-            ) {
-                Text(if (endSessionState is SessionViewModel.EndSessionState.Loading) "Ending…" else "End Session")
+            if (!operatorManagesSessionsOnly) {
+                val isEnding =
+                    endSessionState is SessionViewModel.EndSessionState.Loading ||
+                        endSessionState is SessionViewModel.EndSessionState.Success ||
+                        isExpired
+                Button(
+                    onClick = { viewModel.endSession(stationId) },
+                    enabled = !isEnding,
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Text(if (isEnding) "Ending…" else "End Session")
+                }
             }
 
             TextButton(

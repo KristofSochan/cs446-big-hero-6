@@ -187,15 +187,22 @@ class FirestoreRepository {
      * Add user to waitlist (transaction-safe).
      * Attendees stored as map keyed by userId; joinedAt uses server timestamp.
      */
-    suspend fun addToWaitlist(stationId: String, userId: String): Result<Unit> {
+    suspend fun addToWaitlist(
+        stationId: String,
+        userId: String,
+        form: Map<String, String> = emptyMap()
+    ): Result<Unit> {
         return try {
             db.runTransaction { transaction ->
                 val stationRef = db.collection("stations").document(stationId)
-                val newAttendee = mapOf(
+                val newAttendee = mutableMapOf(
                     "userId" to userId,
                     "status" to "waiting",
                     "joinedAt" to FieldValue.serverTimestamp()
                 )
+                if (form.isNotEmpty()) {
+                    newAttendee["form"] = form
+                }
                 transaction.update(stationRef, "attendees.$userId", newAttendee)
                 val userRef = db.collection("users").document(userId)
                 transaction.update(userRef, "currentWaitlists", FieldValue.arrayUnion(stationId))
@@ -207,7 +214,8 @@ class FirestoreRepository {
     }
 
     /**
-     * Remove user from waitlist (transaction-safe)
+     * Remove user from waitlist (transaction-safe).
+     * Also clears currentReservation if it belongs to this user.
      */
     suspend fun removeFromWaitlist(stationId: String, userId: String): Result<Unit> {
         return try {
@@ -219,6 +227,11 @@ class FirestoreRepository {
                     transaction.update(stationRef, "attendees.$userId", FieldValue.delete())
                     val userRef = db.collection("users").document(userId)
                     transaction.update(userRef, "currentWaitlists", FieldValue.arrayRemove(stationId))
+                    
+                    // Clear reservation if it belongs to this user
+                    if (station.currentReservation?.userId == userId) {
+                        transaction.update(stationRef, "currentReservation", FieldValue.delete())
+                    }
                 }
             }.await()
             Result.success(Unit)
@@ -237,13 +250,32 @@ class FirestoreRepository {
                 val station = transaction.get(stationRef).toObject(Station::class.java)
                     ?: throw IllegalStateException("Station not found")
                 station.attendees[userId] ?: throw IllegalStateException("User not in waitlist")
-                val firstAttendee = station.attendees.values.minByOrNull { it.joinedAt }
+                val firstAttendee = station.attendees.values
+                    .filter { it.status == "waiting" }
+                    .minByOrNull { it.joinedAt }
                 val newTimestamp = if (firstAttendee != null) {
                     Timestamp(Date(firstAttendee.joinedAt.toDate().time - 1000))
                 } else {
                     Timestamp.now()
                 }
                 transaction.update(stationRef, "attendees.$userId.joinedAt", newTimestamp)
+                val reservationUserId = station.currentReservation?.userId
+                if (reservationUserId != null) {
+                    // Determine the new head of the queue after the reorder.
+                    val updatedAttendees = station.attendees.toMutableMap()
+                    val current = updatedAttendees[userId]
+                    if (current != null) {
+                        updatedAttendees[userId] = current.copy(joinedAt = newTimestamp)
+                    }
+                    val newHeadUserId = updatedAttendees.values
+                        .filter { it.status == "waiting" }
+                        .minByOrNull { it.joinedAt }?.userId
+
+                    // Only clear reservation if the reserved user is no longer head.
+                    if (newHeadUserId != reservationUserId) {
+                        transaction.update(stationRef, "currentReservation", FieldValue.delete())
+                    }
+                }
             }.await()
             Result.success(Unit)
         } catch (e: Exception) {
@@ -261,14 +293,49 @@ class FirestoreRepository {
                 val station = transaction.get(stationRef).toObject(Station::class.java)
                     ?: throw IllegalStateException("Station not found")
                 station.attendees[userId] ?: throw IllegalStateException("User not in waitlist")
-                val lastAttendee = station.attendees.values.maxByOrNull { it.joinedAt }
+                val lastAttendee = station.attendees.values
+                    .filter { it.status == "waiting" }
+                    .maxByOrNull { it.joinedAt }
                 val newTimestamp = if (lastAttendee != null) {
                     Timestamp(Date(lastAttendee.joinedAt.toDate().time + 1000))
                 } else {
                     Timestamp.now()
                 }
                 transaction.update(stationRef, "attendees.$userId.joinedAt", newTimestamp)
+                val reservationUserId = station.currentReservation?.userId
+                if (reservationUserId != null) {
+                    // Determine the new head of the queue after the reorder.
+                    val updatedAttendees = station.attendees.toMutableMap()
+                    val current = updatedAttendees[userId]
+                    if (current != null) {
+                        updatedAttendees[userId] = current.copy(joinedAt = newTimestamp)
+                    }
+                    val newHeadUserId = updatedAttendees.values
+                        .filter { it.status == "waiting" }
+                        .minByOrNull { it.joinedAt }?.userId
+
+                    // Only clear reservation if the reserved user is no longer head.
+                    if (newHeadUserId != reservationUserId) {
+                        transaction.update(stationRef, "currentReservation", FieldValue.delete())
+                    }
+                }
             }.await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Notify the current head of the queue and, if check-in enforcement is
+     * enabled, start a check-in window for them.
+     */
+    suspend fun notifyHead(stationId: String): Result<Unit> {
+        return try {
+            functions
+                .getHttpsCallable("notifyHead")
+                .call(hashMapOf("stationId" to stationId))
+                .await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -299,34 +366,60 @@ class FirestoreRepository {
         mode: String = "manual"
     ): Result<Unit> {
         return try {
-            // Get current station to find user entry
-            val station = getStation(stationId) ?: return Result.failure(
-                IllegalStateException("Station not found")
-            )
-
-            db.runTransaction { transaction ->
-                val stationRef = db.collection("stations").document(stationId)
-                val currentStation = transaction.get(stationRef).toObject(Station::class.java)
-
-                // Check if current session exists and is expired (timed only)
-                val currentSession = currentStation?.currentSession
-                val now = Timestamp.now()
-                if (currentSession?.expiresAt != null &&
-                    currentSession.expiresAt.seconds * 1000 < now.seconds * 1000) {
-                    transaction.update(stationRef, "currentSession", null)
-                } else if (currentSession != null) {
-                    throw IllegalStateException("Station is currently in use")
-                }
-
-                // Cloud Function sets startedAt and expiresAt from server time
-                transaction.update(stationRef, "currentSession", mapOf("userId" to userId))
-                transaction.update(stationRef, "attendees.$userId", FieldValue.delete())
-            }.await()
-
+            applyStartSessionTx(stationId = stationId, userIdToSeat = userId)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /**
+     * Operator-driven session start (seating). Uses the same transaction as guest start,
+     * but is exposed separately so UI/policy can differ.
+     */
+    suspend fun startSessionAsOperator(stationId: String, userIdToSeat: String): Result<Unit> {
+        return try {
+            applyStartSessionTx(stationId = stationId, userIdToSeat = userIdToSeat)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Shared transaction for starting a session for a specific user.
+     * - Clears an expired timed session, if present
+     * - Throws if a non-expired session is currently active
+     * - Sets currentSession.userId; Cloud Function sets startedAt/expiresAt
+     * - Removes the user from attendees
+     * - Consumes ANY currentReservation (clears it unconditionally)
+     */
+    private suspend fun applyStartSessionTx(stationId: String, userIdToSeat: String) {
+        db.runTransaction { transaction ->
+            val stationRef = db.collection("stations").document(stationId)
+            val currentStation = transaction.get(stationRef).toObject(Station::class.java)
+                ?: throw IllegalStateException("Station not found")
+
+            val currentSession = currentStation.currentSession
+            val now = Timestamp.now()
+            if (currentSession?.expiresAt != null &&
+                currentSession.expiresAt.seconds * 1000 < now.seconds * 1000
+            ) {
+                transaction.update(stationRef, "currentSession", null)
+            } else if (currentSession != null) {
+                throw IllegalStateException("Station is currently in use")
+            }
+
+            transaction.update(stationRef, "currentSession", mapOf("userId" to userIdToSeat))
+            transaction.update(stationRef, "attendees.$userIdToSeat", FieldValue.delete())
+
+            // Unconditionally clear currentReservation when ANY session starts.
+            // This ensures that if User A was reserved but User B takes the station,
+            // User A no longer sees "Your turn!" copy.
+            if (currentStation.currentReservation != null) {
+                transaction.update(stationRef, "currentReservation", FieldValue.delete())
+            }
+        }.await()
     }
     
     /**

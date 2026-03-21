@@ -22,6 +22,8 @@ import ca.uwaterloo.cs446.bighero6.ui.components.TapListScaffold
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
 import kotlinx.coroutines.launch
 
+// View for stations that you are an operator of
+
 @Composable
 fun MyStationsScreen(navController: NavController) {
     val context = LocalContext.current
