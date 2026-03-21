@@ -142,16 +142,16 @@ fun QueueManagementScreen(
                 } else {
                     // Current Session Section
                     currentSession?.let { session ->
+                        val startedAtDate = session.startedAt?.toDate()
+                        val timeFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
+                        val userName = userCache[session.userId]?.name?.ifEmpty { null } ?: "${session.userId?.take(8)}..."
+                        
                         Text(
                             text = "Now Serving",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
-                        
-                        val startedAtDate = session.startedAt?.toDate()
-                        val timeFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
-                        val userName = userCache[session.userId]?.name?.ifEmpty { null } ?: "${session.userId?.take(8)}..."
                         
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -304,7 +304,8 @@ fun QueueManagementScreen(
                                                     expanded = attendeeMenuExpanded,
                                                     onDismissRequest = { attendeeMenuExpanded = false }
                                                 ) {
-                                                    if (index == 0) {
+                                                    // Only show Notify if no one is currently in session
+                                                    if (index == 0 && currentSession == null) {
                                                         DropdownMenuItem(
                                                             text = { Text("Notify guest") },
                                                             onClick = {

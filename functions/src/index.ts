@@ -588,6 +588,24 @@ export const notifyHead = onCall({region: REGION}, async (request) => {
   }
 
   const station = snap.data() as StationDoc;
+
+  // Do not allow Notify if someone is currently using the session.
+  const currentSession = station.currentSession;
+  if (currentSession && currentSession.userId) {
+    // If timed session exists, check if it is already expired before blocking
+    const now = admin.firestore.Timestamp.now();
+    const isExpired =
+      currentSession.expiresAt &&
+      currentSession.expiresAt.toMillis() < now.toMillis();
+
+    if (!isExpired) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Cannot notify next guest while a session is in progress.",
+      );
+    }
+  }
+
   const attendeesMap = station.attendees || {};
   const attendees = Object.values(attendeesMap) as Attendee[];
   const waitingAttendees = attendees
