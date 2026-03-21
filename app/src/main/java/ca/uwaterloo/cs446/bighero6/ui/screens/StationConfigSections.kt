@@ -23,7 +23,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.material3.Divider
 import androidx.compose.ui.Alignment
@@ -471,4 +470,30 @@ fun applyMannedPreset(
     setEnforceCheckinLimit(true)
     setIsTimed(false)
     setAutoJoinEnabled(false)
+}
+
+/**
+ * Normalizes JoinFormField keys based on their labels.
+ */
+fun normalizeJoinFormFields(
+    fields: List<JoinFormField>
+): List<JoinFormField> {
+    val usedKeys = mutableSetOf<String>()
+    return fields.mapIndexed { index, field ->
+        val base = field.label.trim().lowercase()
+        var key = base
+            .replace("\\s+".toRegex(), "_")
+            .replace("[^a-z0-9_]".toRegex(), "")
+        if (key.isBlank()) {
+            key = "field${index + 1}"
+        }
+        var uniqueKey = key
+        var suffix = 2
+        while (usedKeys.contains(uniqueKey)) {
+            uniqueKey = "${key}_$suffix"
+            suffix++
+        }
+        usedKeys.add(uniqueKey)
+        field.copy(key = uniqueKey)
+    }
 }

@@ -3,20 +3,17 @@ package ca.uwaterloo.cs446.bighero6.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.data.JoinFormField
@@ -309,28 +306,5 @@ private fun DraftAndPublishButtons(
             Spacer(Modifier.width(8.dp))
             Text("Publish")
         }
-    }
-}
-
-private fun normalizeJoinFormFields(
-    fields: List<JoinFormField>
-): List<JoinFormField> {
-    val usedKeys = mutableSetOf<String>()
-    return fields.mapIndexed { index, field ->
-        val base = field.label.trim().lowercase()
-        var key = base
-            .replace("\\s+".toRegex(), "_")
-            .replace("[^a-z0-9_]".toRegex(), "")
-        if (key.isBlank()) {
-            key = "field${index + 1}"
-        }
-        var uniqueKey = key
-        var suffix = 2
-        while (usedKeys.contains(uniqueKey)) {
-            uniqueKey = "${key}_$suffix"
-            suffix++
-        }
-        usedKeys.add(uniqueKey)
-        field.copy(key = uniqueKey)
     }
 }
