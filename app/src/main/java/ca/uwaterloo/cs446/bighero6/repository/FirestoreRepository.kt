@@ -250,7 +250,9 @@ class FirestoreRepository {
                 val station = transaction.get(stationRef).toObject(Station::class.java)
                     ?: throw IllegalStateException("Station not found")
                 station.attendees[userId] ?: throw IllegalStateException("User not in waitlist")
-                val firstAttendee = station.attendees.values.minByOrNull { it.joinedAt }
+                val firstAttendee = station.attendees.values
+                    .filter { it.status == "waiting" }
+                    .minByOrNull { it.joinedAt }
                 val newTimestamp = if (firstAttendee != null) {
                     Timestamp(Date(firstAttendee.joinedAt.toDate().time - 1000))
                 } else {
@@ -266,6 +268,7 @@ class FirestoreRepository {
                         updatedAttendees[userId] = current.copy(joinedAt = newTimestamp)
                     }
                     val newHeadUserId = updatedAttendees.values
+                        .filter { it.status == "waiting" }
                         .minByOrNull { it.joinedAt }?.userId
 
                     // Only clear reservation if the reserved user is no longer head.
@@ -290,7 +293,9 @@ class FirestoreRepository {
                 val station = transaction.get(stationRef).toObject(Station::class.java)
                     ?: throw IllegalStateException("Station not found")
                 station.attendees[userId] ?: throw IllegalStateException("User not in waitlist")
-                val lastAttendee = station.attendees.values.maxByOrNull { it.joinedAt }
+                val lastAttendee = station.attendees.values
+                    .filter { it.status == "waiting" }
+                    .maxByOrNull { it.joinedAt }
                 val newTimestamp = if (lastAttendee != null) {
                     Timestamp(Date(lastAttendee.joinedAt.toDate().time + 1000))
                 } else {
@@ -306,6 +311,7 @@ class FirestoreRepository {
                         updatedAttendees[userId] = current.copy(joinedAt = newTimestamp)
                     }
                     val newHeadUserId = updatedAttendees.values
+                        .filter { it.status == "waiting" }
                         .minByOrNull { it.joinedAt }?.userId
 
                     // Only clear reservation if the reserved user is no longer head.
