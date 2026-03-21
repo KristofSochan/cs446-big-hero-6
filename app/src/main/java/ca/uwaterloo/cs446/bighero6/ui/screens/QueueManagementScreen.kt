@@ -317,7 +317,7 @@ fun QueueManagementScreen(
                                                     }
                                                     if (currentSession == null) {
                                                         DropdownMenuItem(
-                                                            text = { Text("Seat / start session") },
+                                                            text = { Text("Start session") },
                                                             onClick = {
                                                                 attendeeMenuExpanded = false
                                                                 scope.launch {
