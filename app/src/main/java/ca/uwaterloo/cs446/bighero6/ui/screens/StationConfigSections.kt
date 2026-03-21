@@ -147,7 +147,7 @@ fun SessionLengthRow(
             modifier = Modifier.weight(1f),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            label = { Text("Min") },
+            label = { Text("Minutes") },
             placeholder = { Text("15") }
         )
         OutlinedTextField(
@@ -166,7 +166,7 @@ fun SessionLengthRow(
             modifier = Modifier.weight(1f),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            label = { Text("Sec") },
+            label = { Text("Seconds") },
             placeholder = { Text("00") }
         )
     }
@@ -352,7 +352,7 @@ fun CheckinWindowRow(
             modifier = Modifier.weight(1f),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            label = { Text("Min") },
+            label = { Text("Minutes") },
             placeholder = { Text("1") }
         )
         OutlinedTextField(
@@ -371,7 +371,7 @@ fun CheckinWindowRow(
             modifier = Modifier.weight(1f),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            label = { Text("Sec") },
+            label = { Text("Seconds") },
             placeholder = { Text("00") }
         )
     }
