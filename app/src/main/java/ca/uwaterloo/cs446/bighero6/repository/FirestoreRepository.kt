@@ -386,7 +386,7 @@ class FirestoreRepository {
      * - Throws if a non-expired session is currently active
      * - Sets currentSession.userId; Cloud Function sets startedAt/expiresAt
      * - Removes the user from attendees
-     * - Consumes currentReservation if it matches the same user
+     * - Consumes ANY currentReservation (clears it unconditionally)
      */
     private suspend fun applyStartSessionTx(stationId: String, userIdToSeat: String) {
         db.runTransaction { transaction ->
@@ -407,8 +407,10 @@ class FirestoreRepository {
             transaction.update(stationRef, "currentSession", mapOf("userId" to userIdToSeat))
             transaction.update(stationRef, "attendees.$userIdToSeat", FieldValue.delete())
 
-            val reservationUserId = currentStation.currentReservation?.userId
-            if (reservationUserId == userIdToSeat) {
+            // Unconditionally clear currentReservation when ANY session starts.
+            // This ensures that if User A was reserved but User B takes the station,
+            // User A no longer sees "Your turn!" copy.
+            if (currentStation.currentReservation != null) {
                 transaction.update(stationRef, "currentReservation", FieldValue.delete())
             }
         }.await()
