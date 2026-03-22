@@ -7,5 +7,6 @@ import com.google.firebase.firestore.IgnoreExtraProperties
 data class Attendee(
     val userId: String = "",
     val status: String = "waiting", // "waiting", "attending", "removed"
-    val joinedAt: Timestamp = Timestamp.now() // Client-side timestamp
+    val joinedAt: Timestamp = Timestamp.now(), // Client-side timestamp
+    val form: Map<String, String> = emptyMap()
 )

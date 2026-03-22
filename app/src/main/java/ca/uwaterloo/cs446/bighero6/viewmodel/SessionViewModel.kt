@@ -19,6 +19,8 @@ class SessionViewModel : ViewModel() {
     private val repository = FirestoreRepository()
     private var listener: ListenerRegistration? = null
     private var countdownJob: Job? = null
+    private var clientEndsOnTimeout: Boolean = true
+    private var hadSession: Boolean = false
 
     val timeRemaining = MutableStateFlow(0L)
     val isExpired = MutableStateFlow(false)
@@ -36,23 +38,24 @@ class SessionViewModel : ViewModel() {
      * sessionDurationSeconds immediately (so user sees 15, 14, 13... right away),
      * then switch to server-derived countdown when getSessionTime returns.
      */
-    fun startSessionTimer(stationId: String) {
+    fun startSessionTimer(stationId: String, operatorManagesSessionsOnly: Boolean = false) {
         endSessionState.value = EndSessionState.Idle
         isExpired.value = false
         timeRemaining.value = 0
         countdownJob?.cancel()
+        clientEndsOnTimeout = !operatorManagesSessionsOnly
+        hadSession = false
 
         listener = repository.subscribeToStation(stationId) { station ->
             if (station?.currentSession == null) {
                 countdownJob?.cancel()
                 countdownJob = null
-                // Only treat this as an expiration if we were actively counting down.
-                // On initial load before session starts, timeRemaining will be 0.
-                if (timeRemaining.value > 0L) {
+                if (hadSession) {
                     isExpired.value = true
                 }
                 return@subscribeToStation
             }
+            hadSession = true
             val isTimed = station.mode == "timed"
             if (!isTimed) return@subscribeToStation
 
@@ -81,11 +84,17 @@ class SessionViewModel : ViewModel() {
                 val remaining = (durationMs - elapsed).coerceAtLeast(0L)
                 timeRemaining.value = remaining
                 if (remaining <= 0) {
-                    endSessionState.value = EndSessionState.Loading
-                    repository.endSession(stationId)
-                    endSessionState.value = EndSessionState.Success
-                    isExpired.value = true
-                    break
+                    if (clientEndsOnTimeout) {
+                        endSessionState.value = EndSessionState.Loading
+                        repository.endSession(stationId)
+                        endSessionState.value = EndSessionState.Success
+                        isExpired.value = true
+                        break
+                    } else {
+                        endSessionState.value = EndSessionState.Loading
+                        timeRemaining.value = 0L
+                        break
+                    }
                 }
             }
         }
@@ -118,11 +127,17 @@ class SessionViewModel : ViewModel() {
                 val remaining = (cappedInitial - elapsed).coerceAtLeast(0L)
                 timeRemaining.value = remaining
                 if (remaining <= 0) {
-                    endSessionState.value = EndSessionState.Loading
-                    repository.endSession(stationId)
-                    endSessionState.value = EndSessionState.Success
-                    isExpired.value = true
-                    break
+                    if (clientEndsOnTimeout) {
+                        endSessionState.value = EndSessionState.Loading
+                        repository.endSession(stationId)
+                        endSessionState.value = EndSessionState.Success
+                        isExpired.value = true
+                        break
+                    } else {
+                        endSessionState.value = EndSessionState.Loading
+                        timeRemaining.value = 0L
+                        break
+                    }
                 }
             }
         }

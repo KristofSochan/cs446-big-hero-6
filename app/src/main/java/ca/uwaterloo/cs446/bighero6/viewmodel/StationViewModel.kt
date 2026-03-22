@@ -44,11 +44,15 @@ class StationViewModel : ViewModel() {
         stationListener = null
     }
     
-    fun joinWaitlist(stationId: String, context: android.content.Context) {
+    fun joinWaitlist(
+        stationId: String,
+        context: android.content.Context,
+        form: Map<String, String> = emptyMap()
+    ) {
         viewModelScope.launch {
             joinState.value = UiState.Loading
             val userId = DeviceIdManager.getUserId(context)
-            val result = repository.addToWaitlist(stationId, userId)
+            val result = repository.addToWaitlist(stationId, userId, form)
             joinState.value = if (result.isSuccess) {
                 UiState.Success(Unit)
             } else {

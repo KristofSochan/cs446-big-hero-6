@@ -10,6 +10,7 @@
 import {setGlobalOptions} from "firebase-functions";
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import {onTaskDispatched} from "firebase-functions/v2/tasks";
+import {onDocumentUpdated} from "firebase-functions/v2/firestore";
 import {getFunctions} from "firebase-admin/functions";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
@@ -19,22 +20,10 @@ import {Station as StationDoc, Attendee} from "./types";
 // Initialize Firebase Admin
 admin.initializeApp();
 
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
 // us-east4 (Northern Virginia) - lower latency for Waterloo, ON
 const REGION = "us-east4";
 
 setGlobalOptions({maxInstances: 10, region: REGION});
-
-import {onDocumentUpdated} from "firebase-functions/v2/firestore";
 
 /**
  * Returns YYYY-MM-DD in UTC for analytics bucketing.
@@ -157,6 +146,11 @@ export const onStationUpdate = onDocumentUpdated(
         "currentSession.startedAt": now,
         "currentSession.sessionId": randomUUID(),
       };
+      // This ensures if User A was reserved but User B takes the station,
+      // User A no longer sees "Your turn!" stale data.
+      if (after.currentReservation) {
+        update["currentReservation"] = admin.firestore.FieldValue.delete();
+      }
       if (isTimed) {
         update["currentSession.expiresAt"] = new admin.firestore.Timestamp(
           now.seconds + durationSec,
@@ -217,9 +211,8 @@ export const onStationUpdate = onDocumentUpdated(
 
       const queueBecameNonEmpty =
         beforeWaitingCount === 0 && afterWaitingCount > 0;
-      const noReservation = !after.currentReservation;
 
-      if (queueBecameNonEmpty && noReservation) {
+      if (queueBecameNonEmpty) {
         logger.info(
           `Queue became non-empty for idle station ${stationId}; ` +
             "advancing queue",
@@ -301,26 +294,24 @@ async function advanceQueue(
 
   if (!station) return;
 
+  await stationRef
+    .update({
+      currentReservation: admin.firestore.FieldValue.delete(),
+    })
+    .catch((error) => {
+      logger.error(
+        `Failed to clear currentReservation for station ${stationId}`,
+        error,
+      );
+    });
+
   const attendeesMap = station.attendees || {};
   const attendees = Object.values(attendeesMap) as Attendee[];
   const waitingAttendees = attendees
     .filter((a) => a.status === "waiting")
     .sort((a, b) => a.joinedAt.toMillis() - b.joinedAt.toMillis());
 
-  if (waitingAttendees.length === 0) {
-    // No one waiting; clear any existing reservation.
-    await stationRef
-      .update({
-        currentReservation: admin.firestore.FieldValue.delete(),
-      })
-      .catch((error) => {
-        logger.error(
-          `Failed to clear currentReservation for station ${stationId}`,
-          error,
-        );
-      });
-    return;
-  }
+  if (waitingAttendees.length === 0) return;
 
   const nextUserId = waitingAttendees[0].userId;
   const now = admin.firestore.Timestamp.now();
@@ -334,24 +325,43 @@ async function advanceQueue(
   // (excludes check-in delay).
   await incrementQueueWaitAnalytics(stationId, now, queueWaitSeconds);
 
-  await notifyUserAtPositionOne(nextUserId, stationId, station.name);
+  const notificationMode = station.notificationMode ?? "auto";
 
-  if (!station.enforceCheckinLimit) {
-    // No check-in window enforcement; nothing more to do.
-    await stationRef
-      .update({
-        currentReservation: admin.firestore.FieldValue.delete(),
-      })
-      .catch((error) => {
-        logger.error(
-          `Failed to clear currentReservation for station ${stationId}`,
-          error,
-        );
-      });
-    return;
-  }
+  // In manual notification mode, advancing the queue just updates analytics and
+  // leaves it to the operator to notify the guest (via notifyHead callable).
+  if (notificationMode === "manual") return;
+
+  await notifyUserAtPositionOne(
+    nextUserId,
+    stationId,
+    station.name,
+    station.operatorManagesSessionsOnly ?? false,
+  );
+
+  if (!station.enforceCheckinLimit) return;
 
   const checkinWindowSeconds = station.checkinWindowSeconds ?? 60;
+  await createReservationAndScheduleExpiration({
+    stationRef: stationRef as admin.firestore.DocumentReference<StationDoc>,
+    userId: nextUserId,
+    checkinWindowSeconds,
+  });
+}
+
+/**
+ * Creates/sets the head reservation window and schedules expiration.
+ */
+async function createReservationAndScheduleExpiration({
+  stationRef,
+  userId,
+  checkinWindowSeconds,
+}: {
+  stationRef: admin.firestore.DocumentReference<StationDoc>;
+  userId: string;
+  checkinWindowSeconds: number;
+}): Promise<void> {
+  const stationId = stationRef.id;
+  const now = admin.firestore.Timestamp.now();
   const expiresAt = new admin.firestore.Timestamp(
     now.seconds + checkinWindowSeconds,
     now.nanoseconds,
@@ -360,7 +370,7 @@ async function advanceQueue(
 
   await stationRef.update({
     currentReservation: {
-      userId: nextUserId,
+      userId,
       expiresAt,
       reservationId,
     },
@@ -414,11 +424,13 @@ async function scheduleReservationExpiration(
  * @param {string} userId - The user ID
  * @param {string} stationId - The station ID
  * @param {string} stationName - The station name
+ * @param {boolean} operatorManagesSessionsOnly - Whether guests can start/end.
  */
 async function notifyUserAtPositionOne(
   userId: string,
   stationId: string,
   stationName: string,
+  operatorManagesSessionsOnly: boolean,
 ) {
   try {
     // Get user's FCM token
@@ -439,13 +451,16 @@ async function notifyUserAtPositionOne(
       return;
     }
 
-    // Send notification
+    // Body copy mirrors GuestQueueCopy.yourTurn().
+    const body = operatorManagesSessionsOnly ?
+      `Your turn at ${stationName}! ` +
+        "Please return to the host stand to be seated." :
+      `Your turn at ${stationName}! ` +
+        "Tap the NFC tag to start your session.";
     const message = {
       notification: {
         title: "It's Your Turn!",
-        body:
-          `You're next in line for ${stationName}. ` +
-          "Tap the NFC tag to start.",
+        body,
       },
       data: {
         stationId: stationId,
@@ -524,6 +539,78 @@ export const getReservationTime = onCall(
     };
   },
 );
+
+/**
+ * Callable: Notify the current head of the queue and, if enforceCheckinLimit is
+ * enabled, start a check-in window for them. In manual notification mode this
+ * is the primary way guests are notified; in auto mode it can be used to
+ * resend the notification.
+ */
+export const notifyHead = onCall({region: REGION}, async (request) => {
+  const stationId = request.data?.stationId;
+  if (!stationId || typeof stationId !== "string") {
+    throw new HttpsError("invalid-argument", "stationId required");
+  }
+
+  const db = admin.firestore();
+  const stationRef = db.collection("stations").doc(stationId);
+  const snap = await stationRef.get();
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "Station not found");
+  }
+
+  const station = snap.data() as StationDoc;
+
+  // Requirement: Do not allow Notify if someone is currently using the session.
+  const currentSession = station.currentSession;
+  if (currentSession && currentSession.userId) {
+    // If timed session exists, check if it is already expired before blocking
+    const now = admin.firestore.Timestamp.now();
+    const isExpired =
+      currentSession.expiresAt &&
+      currentSession.expiresAt.toMillis() < now.toMillis();
+
+    if (!isExpired) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Cannot notify next guest while a session is in progress.",
+      );
+    }
+  }
+
+  const attendeesMap = station.attendees || {};
+  const attendees = Object.values(attendeesMap) as Attendee[];
+  const waitingAttendees = attendees
+    .filter((a) => a.status === "waiting")
+    .sort((a, b) => a.joinedAt.toMillis() - b.joinedAt.toMillis());
+
+  if (waitingAttendees.length === 0) return;
+
+  const nextUserId = waitingAttendees[0].userId;
+  const operatorOnly = station.operatorManagesSessionsOnly ?? false;
+
+  await notifyUserAtPositionOne(
+    nextUserId,
+    stationId,
+    station.name,
+    operatorOnly,
+  );
+
+  // If check-in enforcement is off, notifying the guest is all we do.
+  if (!station.enforceCheckinLimit) return;
+
+  // If a reservation already exists for this user, don't reset it.
+  const existingReservation = station.currentReservation;
+  if (existingReservation && existingReservation.userId === nextUserId) return;
+
+  // Create the grace-period reservation window.
+  const checkinWindowSeconds = station.checkinWindowSeconds ?? 60;
+  await createReservationAndScheduleExpiration({
+    stationRef: stationRef as admin.firestore.DocumentReference<StationDoc>,
+    userId: nextUserId,
+    checkinWindowSeconds,
+  });
+});
 
 /**
  * Cloud Task handler that expires a session

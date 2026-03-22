@@ -142,16 +142,16 @@ fun QueueManagementScreen(
                 } else {
                     // Current Session Section
                     currentSession?.let { session ->
+                        val startedAtDate = session.startedAt?.toDate()
+                        val timeFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
+                        val userName = userCache[session.userId]?.name?.ifEmpty { null } ?: "${session.userId?.take(8)}..."
+                        
                         Text(
                             text = "Now Serving",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
-                        
-                        val startedAtDate = session.startedAt?.toDate()
-                        val timeFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
-                        val userName = userCache[session.userId]?.name?.ifEmpty { null } ?: "${session.userId?.take(8)}..."
                         
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -263,6 +263,21 @@ fun QueueManagementScreen(
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
+                                            val form = attendee.form
+                                            if (form.isNotEmpty()) {
+                                                Spacer(Modifier.height(4.dp))
+                                                val labelByKey = station!!.joinFormFields.associateBy({ it.key }, { it.label })
+                                                form.forEach { (key, value) ->
+                                                    if (value.isNotBlank()) {
+                                                        val label = labelByKey[key].takeUnless { it.isNullOrBlank() } ?: key
+                                                        Text(
+                                                            text = "$label: $value",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                         
                                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -289,6 +304,32 @@ fun QueueManagementScreen(
                                                     expanded = attendeeMenuExpanded,
                                                     onDismissRequest = { attendeeMenuExpanded = false }
                                                 ) {
+                                                    // Only show Notify if no one is currently in session
+                                                    if (index == 0 && currentSession == null) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("Notify guest") },
+                                                            onClick = {
+                                                                attendeeMenuExpanded = false
+                                                                scope.launch {
+                                                                    repository.notifyHead(stationId)
+                                                                }
+                                                            }
+                                                        )
+                                                    }
+                                                    if (currentSession == null) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("Start session") },
+                                                            onClick = {
+                                                                attendeeMenuExpanded = false
+                                                                scope.launch {
+                                                                    repository.startSessionAsOperator(
+                                                                        stationId,
+                                                                        attendee.userId
+                                                                    )
+                                                                }
+                                                            }
+                                                        )
+                                                    }
                                                     DropdownMenuItem(
                                                         text = { Text("Bring to front of queue") },
                                                         onClick = {
