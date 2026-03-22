@@ -10,6 +10,7 @@
 import {setGlobalOptions} from "firebase-functions";
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import {onTaskDispatched} from "firebase-functions/v2/tasks";
+import {onDocumentUpdated} from "firebase-functions/v2/firestore";
 import {getFunctions} from "firebase-admin/functions";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
@@ -19,22 +20,10 @@ import {Station as StationDoc, Attendee} from "./types";
 // Initialize Firebase Admin
 admin.initializeApp();
 
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
 // us-east4 (Northern Virginia) - lower latency for Waterloo, ON
 const REGION = "us-east4";
 
 setGlobalOptions({maxInstances: 10, region: REGION});
-
-import {onDocumentUpdated} from "firebase-functions/v2/firestore";
 
 /**
  * Returns YYYY-MM-DD in UTC for analytics bucketing.
@@ -222,9 +211,8 @@ export const onStationUpdate = onDocumentUpdated(
 
       const queueBecameNonEmpty =
         beforeWaitingCount === 0 && afterWaitingCount > 0;
-      const noReservation = !after.currentReservation;
 
-      if (queueBecameNonEmpty && noReservation) {
+      if (queueBecameNonEmpty) {
         logger.info(
           `Queue became non-empty for idle station ${stationId}; ` +
             "advancing queue",
@@ -306,26 +294,24 @@ async function advanceQueue(
 
   if (!station) return;
 
+  await stationRef
+    .update({
+      currentReservation: admin.firestore.FieldValue.delete(),
+    })
+    .catch((error) => {
+      logger.error(
+        `Failed to clear currentReservation for station ${stationId}`,
+        error,
+      );
+    });
+
   const attendeesMap = station.attendees || {};
   const attendees = Object.values(attendeesMap) as Attendee[];
   const waitingAttendees = attendees
     .filter((a) => a.status === "waiting")
     .sort((a, b) => a.joinedAt.toMillis() - b.joinedAt.toMillis());
 
-  if (waitingAttendees.length === 0) {
-    // No one waiting; clear any existing reservation.
-    await stationRef
-      .update({
-        currentReservation: admin.firestore.FieldValue.delete(),
-      })
-      .catch((error) => {
-        logger.error(
-          `Failed to clear currentReservation for station ${stationId}`,
-          error,
-        );
-      });
-    return;
-  }
+  if (waitingAttendees.length === 0) return;
 
   const nextUserId = waitingAttendees[0].userId;
   const now = admin.firestore.Timestamp.now();
@@ -343,9 +329,7 @@ async function advanceQueue(
 
   // In manual notification mode, advancing the queue just updates analytics and
   // leaves it to the operator to notify the guest (via notifyHead callable).
-  if (notificationMode === "manual") {
-    return;
-  }
+  if (notificationMode === "manual") return;
 
   await notifyUserAtPositionOne(
     nextUserId,
@@ -354,20 +338,7 @@ async function advanceQueue(
     station.operatorManagesSessionsOnly ?? false,
   );
 
-  if (!station.enforceCheckinLimit) {
-    // No check-in window enforcement; nothing more to do.
-    await stationRef
-      .update({
-        currentReservation: admin.firestore.FieldValue.delete(),
-      })
-      .catch((error) => {
-        logger.error(
-          `Failed to clear currentReservation for station ${stationId}`,
-          error,
-        );
-      });
-    return;
-  }
+  if (!station.enforceCheckinLimit) return;
 
   const checkinWindowSeconds = station.checkinWindowSeconds ?? 60;
   await createReservationAndScheduleExpiration({
