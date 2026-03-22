@@ -231,7 +231,8 @@ fun QueueManagementScreen(
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
-                        
+                        val reservationUserId = station!!.currentReservation?.userId
+
                         LazyColumn(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -240,7 +241,6 @@ fun QueueManagementScreen(
                                 val joinedAtDate = attendee.joinedAt.toDate()
                                 val timeFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
                                 val attendeeName = userCache[attendee.userId]?.name?.ifEmpty { null } ?: "${attendee.userId.take(8)}..."
-                                val reservationUserId = station!!.currentReservation?.userId
                                 val isNotified = !reservationUserId.isNullOrBlank() &&
                                     reservationUserId == attendee.userId
                                 val statusChipLabel = when {
