@@ -233,6 +233,31 @@ fun ShowPositionRow(
 }
 
 @Composable
+fun AllowMultipleWaitlistsRow(
+    allowMultipleWaitlists: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Allow multiple waitlists", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "When off, guests already in another queue (or session) cannot join here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = allowMultipleWaitlists,
+            onCheckedChange = onToggle
+        )
+    }
+}
+
+@Composable
 fun JoinFormFieldsEditor(
     joinFormFields: SnapshotStateList<JoinFormField>
 ) {
@@ -442,6 +467,7 @@ fun applySelfServePreset(
     setEnforceCheckinLimit: (Boolean) -> Unit,
     setIsTimed: (Boolean) -> Unit,
     setAutoJoinEnabled: (Boolean) -> Unit,
+    setAllowMultipleWaitlists: (Boolean) -> Unit,
 ) {
     setOperatorManaged(false)
     setNotificationMode("auto")
@@ -449,6 +475,7 @@ fun applySelfServePreset(
     setEnforceCheckinLimit(true)
     setIsTimed(true)
     setAutoJoinEnabled(true)
+    setAllowMultipleWaitlists(true)
 }
 
 /**
@@ -462,6 +489,7 @@ fun applyMannedPreset(
     setEnforceCheckinLimit: (Boolean) -> Unit,
     setIsTimed: (Boolean) -> Unit,
     setAutoJoinEnabled: (Boolean) -> Unit,
+    setAllowMultipleWaitlists: (Boolean) -> Unit,
 ) {
     setOperatorManaged(true)
     setNotificationMode("manual")
@@ -469,6 +497,7 @@ fun applyMannedPreset(
     setEnforceCheckinLimit(true)
     setIsTimed(false)
     setAutoJoinEnabled(false)
+    setAllowMultipleWaitlists(true)
 }
 
 /**

@@ -38,6 +38,7 @@ fun SessionEditorScreen(
     var operatorManagesSessionsOnly by remember { mutableStateOf(false) }
     var notificationMode by remember { mutableStateOf("auto") }
     var showPositionToGuests by remember { mutableStateOf(true) }
+    var allowMultipleWaitlists by remember { mutableStateOf(true) }
     var enforceCheckinLimit by remember { mutableStateOf(false) }
     var checkinMinutes by remember { mutableStateOf("1") }
     var checkinSeconds by remember { mutableStateOf("00") }
@@ -60,6 +61,7 @@ fun SessionEditorScreen(
             operatorManagesSessionsOnly = station.operatorManagesSessionsOnly
             notificationMode = station.notificationMode
             showPositionToGuests = station.showPositionToGuests
+            allowMultipleWaitlists = station.allowMultipleWaitlists
             enforceCheckinLimit = station.enforceCheckinLimit
             checkinMinutes = (station.checkinWindowSeconds / 60).toString()
             checkinSeconds = (station.checkinWindowSeconds % 60).toString().padStart(2, '0')
@@ -136,7 +138,8 @@ fun SessionEditorScreen(
                                 setShowPositionToGuests = { showPositionToGuests = it },
                                 setEnforceCheckinLimit = { enforceCheckinLimit = it },
                                 setIsTimed = { isTimed -> mode = if (isTimed) EditorStationMode.Timed else EditorStationMode.Manual },
-                                setAutoJoinEnabled = { autoJoinEnabled = it }
+                                setAutoJoinEnabled = { autoJoinEnabled = it },
+                                setAllowMultipleWaitlists = { allowMultipleWaitlists = it }
                             )
                             presetSelection = StationPresetSelection.SelfServe
                         },
@@ -147,7 +150,8 @@ fun SessionEditorScreen(
                                 setShowPositionToGuests = { showPositionToGuests = it },
                                 setEnforceCheckinLimit = { enforceCheckinLimit = it },
                                 setIsTimed = { isTimed -> mode = if (isTimed) EditorStationMode.Timed else EditorStationMode.Manual },
-                                setAutoJoinEnabled = { autoJoinEnabled = it }
+                                setAutoJoinEnabled = { autoJoinEnabled = it },
+                                setAllowMultipleWaitlists = { allowMultipleWaitlists = it }
                             )
                             presetSelection = StationPresetSelection.Manned
                         }
@@ -219,6 +223,14 @@ fun SessionEditorScreen(
                         }
                     )
 
+                    AllowMultipleWaitlistsRow(
+                        allowMultipleWaitlists = allowMultipleWaitlists,
+                        onToggle = {
+                            allowMultipleWaitlists = it
+                            presetSelection = StationPresetSelection.Custom
+                        }
+                    )
+
                     JoinFormFieldsEditor(joinFormFields)
 
                     Text("Current State", style = MaterialTheme.typography.titleMedium)
@@ -271,6 +283,7 @@ fun SessionEditorScreen(
                                     operatorManagesSessionsOnly = operatorManagesSessionsOnly,
                                     notificationMode = notificationMode,
                                     showPositionToGuests = showPositionToGuests,
+                                    allowMultipleWaitlists = allowMultipleWaitlists,
                                     joinFormFields = normalizeJoinFormFields(joinFormFields.toList()),
                                     enforceCheckinLimit = enforceCheckinLimit,
                                     checkinWindowSeconds = checkinTotalSeconds.coerceAtLeast(1)
