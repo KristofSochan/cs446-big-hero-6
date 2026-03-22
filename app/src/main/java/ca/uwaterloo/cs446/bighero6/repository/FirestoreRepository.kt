@@ -39,6 +39,16 @@ data class StationAnalyticsDaily(
 )
 
 class FirestoreRepository {
+    companion object {
+        /**
+         * Join or session start failed because [Station.allowMultipleWaitlists] is false
+         * and the user is active on another station.
+         */
+        const val SINGLE_STATION_WAITLIST_POLICY_MESSAGE =
+            "This station only allows one waitlist at a time. " +
+                "Leave your other queue(s) first."
+    }
+
     private val db = FirebaseFirestore.getInstance()
     private val functions = FirebaseFunctions.getInstance(FUNCTIONS_REGION)
 
@@ -203,10 +213,7 @@ class FirestoreRepository {
                     val elsewhere = (user?.currentWaitlists ?: emptyList())
                         .filter { it != stationId }
                     if (elsewhere.isNotEmpty()) {
-                        throw IllegalStateException(
-                            "This station only allows one waitlist at a time. " +
-                                "Leave your other queue first."
-                        )
+                        throw IllegalStateException(SINGLE_STATION_WAITLIST_POLICY_MESSAGE)
                     }
                 }
                 val newAttendee = mutableMapOf(
@@ -412,6 +419,16 @@ class FirestoreRepository {
             val stationRef = db.collection("stations").document(stationId)
             val currentStation = transaction.get(stationRef).toObject(Station::class.java)
                 ?: throw IllegalStateException("Station not found")
+
+            val userRef = db.collection("users").document(userIdToSeat)
+            if (!currentStation.allowMultipleWaitlists) {
+                val user = transaction.get(userRef).toObject(User::class.java)
+                val elsewhere = (user?.currentWaitlists ?: emptyList())
+                    .filter { it != stationId }
+                if (elsewhere.isNotEmpty()) {
+                    throw IllegalStateException(SINGLE_STATION_WAITLIST_POLICY_MESSAGE)
+                }
+            }
 
             val currentSession = currentStation.currentSession
             val now = Timestamp.now()

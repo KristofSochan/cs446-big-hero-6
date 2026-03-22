@@ -32,6 +32,7 @@ fun QueueManagementScreen(
     val repository = remember { FirestoreRepository() }
     val scope = rememberCoroutineScope()
     var showMenu by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val userCache = remember { mutableStateMapOf<String, User>() }
 
     DisposableEffect(stationId) {
@@ -62,6 +63,7 @@ fun QueueManagementScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("Manage Queue") },
@@ -322,10 +324,20 @@ fun QueueManagementScreen(
                                                             onClick = {
                                                                 attendeeMenuExpanded = false
                                                                 scope.launch {
-                                                                    repository.startSessionAsOperator(
-                                                                        stationId,
-                                                                        attendee.userId
-                                                                    )
+                                                                    val result =
+                                                                        repository.startSessionAsOperator(
+                                                                            stationId,
+                                                                            attendee.userId
+                                                                        )
+                                                                    if (result.isFailure) {
+                                                                        val msg =
+                                                                            result.exceptionOrNull()
+                                                                                ?.message
+                                                                                ?: "Could not start session"
+                                                                        snackbarHostState.showSnackbar(
+                                                                            msg
+                                                                        )
+                                                                    }
                                                                 }
                                                             }
                                                         )

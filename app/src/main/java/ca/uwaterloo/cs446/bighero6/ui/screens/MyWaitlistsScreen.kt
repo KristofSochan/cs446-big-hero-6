@@ -65,6 +65,23 @@ fun MyWaitlistsScreen(
                     Text("Test: Go to Station (Simulate NFC)")
                 }
             }
+            
+            if (SHOW_SIMULATE_NFC_BUTTON) {
+                val hardCodedTestStationId = "5d8ae7e1-1c9c-4bc2-9bce-f363dde21d0f"
+                Button(
+                    onClick = {
+                        navController.navigate(
+                            Screen.StationInfo("").createRoute(
+                                hardCodedTestStationId,
+                                autoStart = true
+                            )
+                        )
+                    },
+                    modifier = Modifier.padding(bottom = 8.dp)
+                ) {
+                    Text("Test: Go to Station (Simulate NFC)")
+                }
+            }
 
             if (SHOW_RESET_USER_ID_BUTTON) {
                 Button(

@@ -69,7 +69,12 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
                 }
 
                 if (isIdle) {
-                    repository.addToWaitlist(stationId, userId)
+                    val joinResult = repository.addToWaitlist(stationId, userId)
+                    if (joinResult.isFailure) {
+                        startError = joinResult.exceptionOrNull()?.message
+                            ?: "Could not join queue"
+                        return@LaunchedEffect
+                    }
                 }
 
                 val startResult = repository.startSession(
@@ -81,13 +86,19 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
                 if (startResult.isSuccess) {
                     viewModel.startSessionTimer(stationId, operatorManagesSessionsOnly)
                 } else {
-                    ensureInQueueAndNavigateToStationInfo(
-                        stationId = stationId,
-                        userId = userId,
-                        station = station,
-                        repository = repository,
-                        navController = navController
-                    )
+                    val msg = startResult.exceptionOrNull()?.message
+                    if (msg == FirestoreRepository.SINGLE_STATION_WAITLIST_POLICY_MESSAGE) {
+                        startError = msg
+                    } else {
+                        // Lost race or other start failure: land in queue + station info.
+                        ensureInQueueAndNavigateToStationInfo(
+                            stationId = stationId,
+                            userId = userId,
+                            station = station,
+                            repository = repository,
+                            navController = navController
+                        )
+                    }
                 }
             }
 
