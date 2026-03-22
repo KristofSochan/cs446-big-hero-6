@@ -31,6 +31,8 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
     var isTimedMode by remember { mutableStateOf(false) }
     var operatorManagesSessionsOnly by remember { mutableStateOf(false) }
     var startError by remember { mutableStateOf<String?>(null) }
+    /** False until [LaunchedEffect] finishes deciding error vs session vs navigation. */
+    var initialResolutionDone by remember(stationId) { mutableStateOf(false) }
     val repository = remember { FirestoreRepository() }
 
     LaunchedEffect(stationId) {
@@ -40,11 +42,15 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
         operatorManagesSessionsOnly = station?.operatorManagesSessionsOnly == true
         val userId = DeviceIdManager.getUserId(context)
         when {
-            station == null -> startError = "Station not found"
+            station == null -> {
+                startError = "Station not found"
+                initialResolutionDone = true
+            }
 
             // Already in a session on this station: just show the timer.
             station.currentSession?.userId == userId -> {
                 viewModel.startSessionTimer(stationId, operatorManagesSessionsOnly)
+                initialResolutionDone = true
             }
 
             // Idle or head of queue: try to start session. One transaction wins; if we lose, join queue.
@@ -73,6 +79,7 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
                     if (joinResult.isFailure) {
                         startError = joinResult.exceptionOrNull()?.message
                             ?: "Could not join queue"
+                        initialResolutionDone = true
                         return@LaunchedEffect
                     }
                 }
@@ -85,10 +92,12 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
                 )
                 if (startResult.isSuccess) {
                     viewModel.startSessionTimer(stationId, operatorManagesSessionsOnly)
+                    initialResolutionDone = true
                 } else {
                     val msg = startResult.exceptionOrNull()?.message
                     if (msg == FirestoreRepository.SINGLE_STATION_WAITLIST_POLICY_MESSAGE) {
                         startError = msg
+                        initialResolutionDone = true
                     } else {
                         // Lost race or other start failure: land in queue + station info.
                         ensureInQueueAndNavigateToStationInfo(
@@ -128,7 +137,9 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        if (startError != null) {
+        if (!initialResolutionDone) {
+            CircularProgressIndicator()
+        } else if (startError != null) {
             Text(startError!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 16.dp))
             TextButton(onClick = {
                 navController.navigate(Screen.MyWaitlists.route) { popUpTo(Screen.MyWaitlists.route) { inclusive = false } }
