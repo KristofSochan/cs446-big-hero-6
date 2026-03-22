@@ -453,8 +453,7 @@ fun applySelfServePreset(
 
 /**
  * Manned preset: operator-managed sessions, manual notifications, positions
- * hidden, check-in enforced, auto-start disabled. Timed/manual mode is left
- * to the caller via setIsTimed to avoid surprising changes.
+ * hidden, check-in enforced, auto-start disabled, timed mode off.
  */
 fun applyMannedPreset(
     setOperatorManaged: (Boolean) -> Unit,
