@@ -41,7 +41,7 @@ export interface Station {
   operatorManagesSessionsOnly?: boolean;
   notificationMode?: NotificationMode;
   showPositionToGuests?: boolean;
-  allowMultipleWaitlists?: boolean;
+  allowMultipleWaitlists: boolean;
   joinFormFields?: JoinFormField[];
   enforceCheckinLimit?: boolean;
   checkinWindowSeconds?: number;

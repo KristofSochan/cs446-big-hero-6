@@ -14,6 +14,11 @@ data class JoinFormField(
 
 @IgnoreExtraProperties
 data class Station(
+    /**
+     * When false, guests cannot join if they are already waiting or in session
+     * at another station. When true, multiple waitlists are allowed.
+     */
+    val allowMultipleWaitlists: Boolean,
     val id: String = "",
     val ownerId: String = "",
     val name: String = "",
@@ -38,11 +43,6 @@ data class Station(
     val notificationMode: String = "auto",
     /** Whether guests see explicit position/ETA in the queue UI. */
     val showPositionToGuests: Boolean = true,
-    /**
-     * When false, guests cannot join if they are already waiting or in session
-     * at another station. When true (default), multiple waitlists are allowed.
-     */
-    val allowMultipleWaitlists: Boolean = true,
     /** Dynamic fields required/optional when joining the waitlist. */
     val joinFormFields: List<JoinFormField> = emptyList(),
     val enforceCheckinLimit: Boolean = false,
