@@ -195,6 +195,20 @@ class FirestoreRepository {
         return try {
             db.runTransaction { transaction ->
                 val stationRef = db.collection("stations").document(stationId)
+                val station = transaction.get(stationRef).toObject(Station::class.java)
+                    ?: throw IllegalStateException("Station not found")
+                val userRef = db.collection("users").document(userId)
+                if (!station.allowMultipleWaitlists) {
+                    val user = transaction.get(userRef).toObject(User::class.java)
+                    val elsewhere = (user?.currentWaitlists ?: emptyList())
+                        .filter { it != stationId }
+                    if (elsewhere.isNotEmpty()) {
+                        throw IllegalStateException(
+                            "This station only allows one waitlist at a time. " +
+                                "Leave your other queue first."
+                        )
+                    }
+                }
                 val newAttendee = mutableMapOf(
                     "userId" to userId,
                     "status" to "waiting",
@@ -204,7 +218,6 @@ class FirestoreRepository {
                     newAttendee["form"] = form
                 }
                 transaction.update(stationRef, "attendees.$userId", newAttendee)
-                val userRef = db.collection("users").document(userId)
                 transaction.update(userRef, "currentWaitlists", FieldValue.arrayUnion(stationId))
             }.await()
             Result.success(Unit)

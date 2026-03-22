@@ -41,6 +41,7 @@ fun SessionCreationScreen(
     var operatorManagesSessionsOnly by remember { mutableStateOf(false) }
     var notificationMode by remember { mutableStateOf("auto") }
     var showPositionToGuests by remember { mutableStateOf(true) }
+    var allowMultipleWaitlists by remember { mutableStateOf(true) }
     var enforceCheckinLimit by remember { mutableStateOf(false) }
     var checkinMinutes by remember { mutableStateOf("1") }
     var checkinSeconds by remember { mutableStateOf("00") }
@@ -94,7 +95,8 @@ fun SessionCreationScreen(
                             setShowPositionToGuests = { showPositionToGuests = it },
                             setEnforceCheckinLimit = { enforceCheckinLimit = it },
                             setIsTimed = { isTimed -> mode = if (isTimed) StationMode.Timed else StationMode.Manual },
-                            setAutoJoinEnabled = { autoJoinEnabled = it }
+                            setAutoJoinEnabled = { autoJoinEnabled = it },
+                            setAllowMultipleWaitlists = { allowMultipleWaitlists = it }
                         )
                         presetSelection = StationPresetSelection.SelfServe
                     },
@@ -105,7 +107,8 @@ fun SessionCreationScreen(
                             setShowPositionToGuests = { showPositionToGuests = it },
                             setEnforceCheckinLimit = { enforceCheckinLimit = it },
                             setIsTimed = { isTimed -> mode = if (isTimed) StationMode.Timed else StationMode.Manual },
-                            setAutoJoinEnabled = { autoJoinEnabled = it }
+                            setAutoJoinEnabled = { autoJoinEnabled = it },
+                            setAllowMultipleWaitlists = { allowMultipleWaitlists = it }
                         )
                         presetSelection = StationPresetSelection.Manned
                     }
@@ -173,6 +176,14 @@ fun SessionCreationScreen(
                     showPositionToGuests = showPositionToGuests,
                     onToggle = {
                         showPositionToGuests = it
+                        presetSelection = StationPresetSelection.Custom
+                    }
+                )
+
+                AllowMultipleWaitlistsRow(
+                    allowMultipleWaitlists = allowMultipleWaitlists,
+                    onToggle = {
+                        allowMultipleWaitlists = it
                         presetSelection = StationPresetSelection.Custom
                     }
                 )
@@ -246,6 +257,7 @@ fun SessionCreationScreen(
                             operatorManagesSessionsOnly = operatorManagesSessionsOnly,
                             notificationMode = notificationMode,
                             showPositionToGuests = showPositionToGuests,
+                            allowMultipleWaitlists = allowMultipleWaitlists,
                             joinFormFields = normalizedFields,
                             enforceCheckinLimit = enforceCheckinLimit,
                             checkinWindowSeconds = checkinTotalSeconds.coerceAtLeast(1)
