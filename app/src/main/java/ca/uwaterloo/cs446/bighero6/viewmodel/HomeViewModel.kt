@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 data class WaitlistSummary(
     val stationId: String,
     val stationName: String,
-    /** Real position (1-based). */
+    /** Queue position (1-based when waiting; 0 when the user is in-session / not in the queue). */
     val position: Int,
     val showPositionToGuests: Boolean,
     val estimatedWaitTime: String,

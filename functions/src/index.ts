@@ -7,14 +7,14 @@
  * See a full list of supported triggers at https://firebase.google.com/docs/functions
  */
 
-import { setGlobalOptions } from "firebase-functions";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { onTaskDispatched } from "firebase-functions/v2/tasks";
-import { getFunctions } from "firebase-admin/functions";
+import {setGlobalOptions} from "firebase-functions";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
+import {onTaskDispatched} from "firebase-functions/v2/tasks";
+import {getFunctions} from "firebase-admin/functions";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
-import { randomUUID } from "crypto";
-import { Station as StationDoc, Attendee } from "./types";
+import {randomUUID} from "crypto";
+import {Station as StationDoc, Attendee} from "./types";
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -32,9 +32,9 @@ admin.initializeApp();
 // us-east4 (Northern Virginia) - lower latency for Waterloo, ON
 const REGION = "us-east4";
 
-setGlobalOptions({ maxInstances: 10, region: REGION });
+setGlobalOptions({maxInstances: 10, region: REGION});
 
-import { onDocumentUpdated } from "firebase-functions/v2/firestore";
+import {onDocumentUpdated} from "firebase-functions/v2/firestore";
 
 /**
  * Returns YYYY-MM-DD in UTC for analytics bucketing.
@@ -85,7 +85,7 @@ async function incrementQueueWaitAnalytics(
     {
       totalWaitTimeSeconds: admin.firestore.FieldValue.increment(waitSeconds),
     },
-    { merge: true },
+    {merge: true},
   );
 }
 
@@ -104,7 +104,7 @@ async function incrementStartedSessionAnalytics(
     {
       totalSessions: admin.firestore.FieldValue.increment(1),
     },
-    { merge: true },
+    {merge: true},
   );
 }
 
@@ -127,7 +127,7 @@ function analyticsIncrementNoShowTx(
       totalWaitTimeSeconds: admin.firestore.FieldValue.increment(0),
       totalNoShows: admin.firestore.FieldValue.increment(1),
     },
-    { merge: true },
+    {merge: true},
   );
 }
 
@@ -137,7 +137,7 @@ function analyticsIncrementNoShowTx(
  * - When session ends: Notify next person in line
  */
 export const onStationUpdate = onDocumentUpdated(
-  { document: "stations/{stationId}", region: REGION },
+  {document: "stations/{stationId}", region: REGION},
   async (event) => {
     const before = event.data?.before.data() as StationDoc | undefined;
     const after = event.data?.after.data() as StationDoc | undefined;
@@ -180,9 +180,9 @@ export const onStationUpdate = onDocumentUpdated(
         `Session started for station ${stationId}, scheduling expiration`,
       );
       const sessionId =
-        typeof afterSession.sessionId === "string"
-          ? afterSession.sessionId
-          : null;
+        typeof afterSession.sessionId === "string" ?
+          afterSession.sessionId :
+          null;
       if (!sessionId) {
         logger.error(
           `No currentSession.sessionId present for station ${stationId}; ` +
@@ -255,7 +255,7 @@ async function scheduleSessionExpiration(
     const scheduleTime = expiresAt.toDate();
 
     await queue.enqueue(
-      { stationId, sessionId },
+      {stationId, sessionId},
       {
         scheduleTime: scheduleTime,
         dispatchDeadlineSeconds: 60 * 5, // 5 minutes max
@@ -428,7 +428,7 @@ async function scheduleReservationExpiration(
     const scheduleTime = expiresAt.toDate();
 
     await queue.enqueue(
-      { stationId, reservationId },
+      {stationId, reservationId},
       {
         scheduleTime,
         dispatchDeadlineSeconds: 60 * 5,
@@ -481,10 +481,10 @@ async function notifyUserAtPositionOne(
     }
 
     // Body copy mirrors GuestQueueCopy.yourTurn().
-    const body = operatorManagesSessionsOnly
-      ? `Your turn at ${stationName}! ` +
-        "Please return to the host stand to be seated."
-      : `Your turn at ${stationName}! ` +
+    const body = operatorManagesSessionsOnly ?
+      `Your turn at ${stationName}! ` +
+        "Please return to the host stand to be seated." :
+      `Your turn at ${stationName}! ` +
         "Tap the NFC tag to start your session.";
     const message = {
       notification: {
@@ -510,7 +510,7 @@ async function notifyUserAtPositionOne(
  * Client uses initialRemaining = (expiresAtMillis - serverTimeMillis) / 1000
  * then counts down by elapsed time only (no clock skew).
  */
-export const getSessionTime = onCall({ region: REGION }, async (request) => {
+export const getSessionTime = onCall({region: REGION}, async (request) => {
   const stationId = request.data?.stationId;
   if (!stationId || typeof stationId !== "string") {
     throw new HttpsError("invalid-argument", "stationId required");
@@ -542,7 +542,7 @@ export const getSessionTime = onCall({ region: REGION }, async (request) => {
  * then counts down by elapsed time only (same as session timer).
  */
 export const getReservationTime = onCall(
-  { region: REGION },
+  {region: REGION},
   async (request) => {
     const stationId = request.data?.stationId;
     if (!stationId || typeof stationId !== "string") {
@@ -575,7 +575,7 @@ export const getReservationTime = onCall(
  * is the primary way guests are notified; in auto mode it can be used to
  * resend the notification.
  */
-export const notifyHead = onCall({ region: REGION }, async (request) => {
+export const notifyHead = onCall({region: REGION}, async (request) => {
   const stationId = request.data?.stationId;
   if (!stationId || typeof stationId !== "string") {
     throw new HttpsError("invalid-argument", "stationId required");
@@ -657,7 +657,7 @@ export const expireSession = onTaskDispatched(
     },
   },
   async (req) => {
-    const { stationId, sessionId } = req.data as {
+    const {stationId, sessionId} = req.data as {
       stationId: string;
       sessionId?: string;
     };
@@ -685,9 +685,9 @@ export const expireSession = onTaskDispatched(
       }
 
       const currentSessionId =
-        typeof currentSession.sessionId === "string"
-          ? currentSession.sessionId
-          : null;
+        typeof currentSession.sessionId === "string" ?
+          currentSession.sessionId :
+          null;
       if (sessionId && currentSessionId && currentSessionId !== sessionId) {
         // Stale task from a previous session; ignore quietly.
         logger.info(
@@ -706,9 +706,9 @@ export const expireSession = onTaskDispatched(
       }
 
       const sessionUserId =
-        typeof currentSession.userId === "string"
-          ? currentSession.userId
-          : null;
+        typeof currentSession.userId === "string" ?
+          currentSession.userId :
+          null;
 
       // Expire the session and clean up the user's waitlist entry.
       await db.runTransaction(async (tx) => {
@@ -718,9 +718,9 @@ export const expireSession = onTaskDispatched(
         const latestSession = latest.data()?.currentSession;
         if (!latestSession || !latestSession.expiresAt) return;
         const latestSessionId =
-          typeof latestSession.sessionId === "string"
-            ? latestSession.sessionId
-            : null;
+          typeof latestSession.sessionId === "string" ?
+            latestSession.sessionId :
+            null;
         if (sessionId && latestSessionId && latestSessionId !== sessionId) {
           logger.info(
             "Ignoring stale expireSession task in transaction for station " +
@@ -736,9 +736,9 @@ export const expireSession = onTaskDispatched(
         });
 
         const latestUserId =
-          typeof latestSession.userId === "string"
-            ? latestSession.userId
-            : null;
+          typeof latestSession.userId === "string" ?
+            latestSession.userId :
+            null;
         const userIdToUpdate = latestUserId ?? sessionUserId;
         if (userIdToUpdate) {
           const userRef = db.collection("users").doc(userIdToUpdate);
@@ -776,7 +776,7 @@ export const expireReservation = onTaskDispatched(
     },
   },
   async (req) => {
-    const { stationId, reservationId } = req.data as {
+    const {stationId, reservationId} = req.data as {
       stationId: string;
       reservationId?: string;
     };
@@ -813,9 +813,9 @@ export const expireReservation = onTaskDispatched(
       }
 
       const currentReservationId =
-        typeof reservation.reservationId === "string"
-          ? reservation.reservationId
-          : null;
+        typeof reservation.reservationId === "string" ?
+          reservation.reservationId :
+          null;
       if (
         reservationId &&
         currentReservationId &&
