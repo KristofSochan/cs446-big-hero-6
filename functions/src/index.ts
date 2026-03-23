@@ -574,8 +574,17 @@ export const endSession = onCall({region: REGION}, async (request) => {
 
     const isSessionUser = callerUid === sessionUserId;
     const isStationOwner = callerUid === station.ownerId;
+    const operatorManaged = station.operatorManagesSessionsOnly ?? false;
 
-    if (!isSessionUser && !isStationOwner) {
+    if (operatorManaged) {
+      if (!isStationOwner) {
+        throw new HttpsError(
+          "permission-denied",
+          "Only the station owner can end sessions on operator-managed " +
+            "stations",
+        );
+      }
+    } else if (!isSessionUser && !isStationOwner) {
       throw new HttpsError(
         "permission-denied",
         "Only the active user or station owner can end this session",
