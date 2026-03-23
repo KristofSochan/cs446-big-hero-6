@@ -16,6 +16,7 @@ import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.data.User
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
+import ca.uwaterloo.cs446.bighero6.ui.components.NavigateToHomeButton
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -116,7 +117,16 @@ fun QueueManagementScreen(
                     .padding(paddingValues),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Station not found")
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "Station not found",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    NavigateToHomeButton(
+                        navController = navController,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
             }
         } else {
             val attendees = station!!.attendees.values.sortedBy { it.joinedAt }

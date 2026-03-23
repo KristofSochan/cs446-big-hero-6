@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit
 import ca.uwaterloo.cs446.bighero6.ui.UiState
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
 import ca.uwaterloo.cs446.bighero6.viewmodel.StationViewModel
+import ca.uwaterloo.cs446.bighero6.ui.components.NavigateToHomeButton
 import ca.uwaterloo.cs446.bighero6.ui.copy.GuestQueueCopy
 
 /** Eligibility at first load — used for auto-navigate only, so we don't react to later changes. */
@@ -419,7 +420,19 @@ fun StationInfoScreen(
                     )
                 }
             }
-            is UiState.Error -> Text(state.message, color = MaterialTheme.colorScheme.error)
+            is UiState.Error -> {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        state.message,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center
+                    )
+                    NavigateToHomeButton(
+                        navController = navController,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
+            }
             is UiState.Idle -> {}
         }
     }
