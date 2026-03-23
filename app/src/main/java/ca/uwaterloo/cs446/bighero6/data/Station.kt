@@ -18,7 +18,7 @@ data class Station(
      * When false, guests cannot join if they are already waiting or in session
      * at another station. When true, multiple waitlists are allowed.
      */
-    val allowMultipleWaitlists: Boolean,
+    val allowMultipleWaitlists: Boolean = true,
     val id: String = "",
     val ownerId: String = "",
     val name: String = "",
