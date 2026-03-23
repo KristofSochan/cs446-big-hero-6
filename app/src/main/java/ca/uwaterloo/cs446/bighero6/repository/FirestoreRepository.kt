@@ -45,8 +45,8 @@ class FirestoreRepository {
          * and the user is active on another station.
          */
         const val SINGLE_STATION_WAITLIST_POLICY_MESSAGE =
-            "This station only allows one waitlist at a time. " +
-                "Leave your other queue(s) first."
+            "This station allows only one active waitlist per guest. " +
+                "Please leave your other queues before joining."
     }
 
     private val db = FirebaseFirestore.getInstance()
