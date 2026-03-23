@@ -983,15 +983,6 @@ export const expireSession = onTaskDispatched(
           tx.update(userRef, {
             currentWaitlists: admin.firestore.FieldValue.arrayRemove(stationId),
           });
-
-          // we have a valid userID to send a "timed out" message to
-          const stationName =
-            typeof station.name === "string" ? station.name : "this station";
-          await notifyUserSessionExpired(
-            userIdToUpdate,
-            stationId,
-            stationName,
-          );
         }
       });
 
