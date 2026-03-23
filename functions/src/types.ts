@@ -34,6 +34,7 @@ export interface CurrentReservation {
 export type NotificationMode = "auto" | "manual";
 
 export interface Station {
+  ownerId: string;
   name: string;
   isActive: boolean;
   mode?: string;

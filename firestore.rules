@@ -2,25 +2,131 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // USERS: Users can only read/write their own document
-    match /users/{userId} {
-      allow read, write: if true; // In a real app with Auth: if request.auth.uid == userId;
+    // --- helpers ---
+
+    function signedIn() {
+      return request.auth != null;
     }
 
-    // STATIONS:
-    // - Anyone can read any station (so they can join waitlists)
-    // - Only the owner can read/query stations where they are the 'ownerId'
-    // - This prevents people from "listing" stations they don't own if we filter by ownerId
+    function isStationOwner() {
+      return signedIn() && request.auth.uid == resource.data.ownerId;
+    }
+
+    function ownerIdUnchanged() {
+      return request.resource.data.ownerId == resource.data.ownerId;
+    }
+
+    // All config fields that only the station owner may change (guest self-service
+    // must leave these unchanged).
+    function stationConfigUnchanged() {
+      return request.resource.data.name == resource.data.name &&
+        request.resource.data.allowMultipleWaitlists ==
+          resource.data.allowMultipleWaitlists &&
+        request.resource.data.isActive == resource.data.isActive &&
+        request.resource.data.sessionDurationSeconds ==
+          resource.data.sessionDurationSeconds &&
+        request.resource.data.mode == resource.data.mode &&
+        request.resource.data.autoJoinEnabled ==
+          resource.data.autoJoinEnabled &&
+        request.resource.data.operatorManagesSessionsOnly ==
+          resource.data.operatorManagesSessionsOnly &&
+        request.resource.data.notificationMode ==
+          resource.data.notificationMode &&
+        request.resource.data.showPositionToGuests ==
+          resource.data.showPositionToGuests &&
+        request.resource.data.joinFormFields == resource.data.joinFormFields &&
+        request.resource.data.enforceCheckinLimit ==
+          resource.data.enforceCheckinLimit &&
+        request.resource.data.checkinWindowSeconds ==
+          resource.data.checkinWindowSeconds &&
+        request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function attendeeMap(data) {
+      return data.attendees != null ? data.attendees : {};
+    }
+
+    // Guests may only add/remove/reorder their own attendee entry (not others').
+    function attendeesSelfOnlyDelta() {
+      let before = attendeeMap(resource.data);
+      let after = attendeeMap(request.resource.data);
+      let d = after.diff(before);
+      return (d.addedKeys().size() == 0 ||
+          d.addedKeys().hasOnly([request.auth.uid])) &&
+        (d.removedKeys().size() == 0 ||
+          d.removedKeys().hasOnly([request.auth.uid])) &&
+        (d.changedKeys().size() == 0 ||
+          d.changedKeys().hasOnly([request.auth.uid]));
+    }
+
+    function sessionOkNonOwner() {
+      let before = resource.data.currentSession;
+      let after = request.resource.data.currentSession;
+      return before == after ||
+        (before == null && after != null && after.userId == request.auth.uid) ||
+        (before != null && after == null && before.userId == request.auth.uid);
+    }
+
+    function reservationOkNonOwner() {
+      let before = resource.data.currentReservation;
+      let after = request.resource.data.currentReservation;
+      return before == after ||
+        (before != null && after == null && before.userId == request.auth.uid);
+    }
+
+    function guestSelfServiceUpdate() {
+      return signedIn() &&
+        stationConfigUnchanged() &&
+        ownerIdUnchanged() &&
+        attendeesSelfOnlyDelta() &&
+        sessionOkNonOwner() &&
+        reservationOkNonOwner();
+    }
+
+    // "My Stations" query: must filter by ownerId == caller (see Android
+    // subscribeToOwnedStations).
+    function listOwnStationsQuery() {
+      return signedIn() &&
+        request.query.limit <= 100 &&
+        request.query.filters.size() >= 1 &&
+        request.query.filters[0].fieldPath == 'ownerId' &&
+        request.query.filters[0].op == '==' &&
+        request.query.filters[0].value == request.auth.uid;
+    }
+
+    // USERS
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == userId;
+      allow update, delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    // STATIONS
     match /stations/{stationId} {
       allow read: if true;
 
-      // Permission for "My Stations" query
-      // This rule ensures that if a user tries to query ALL stations,
-      // they must include a filter for their own ownerId.
-      allow list: if request.query.limit <= 100 && request.query.filters.ownerId == request.query.filters.ownerId;
+      allow list: if listOwnStationsQuery();
 
-      allow create: if true; // Anyone can create a station for now
-      allow update, delete: if resource.data.ownerId == request.resource.data.ownerId;
+      allow create: if signedIn() &&
+        request.resource.data.ownerId == request.auth.uid;
+
+      allow delete: if signedIn() &&
+        request.auth.uid == resource.data.ownerId;
+
+      allow update: if signedIn() &&
+        ownerIdUnchanged() &&
+        (
+          isStationOwner() ||
+          guestSelfServiceUpdate()
+        );
+    }
+
+    // Analytics (written only by Cloud Functions / Admin SDK)
+    match /stationAnalytics/{stationId}/daily/{dayId} {
+      allow read: if signedIn() &&
+        get(/databases/$(database)/documents/stations/$(stationId))
+          .data.ownerId == request.auth.uid;
+      allow write: if false;
     }
   }
 }

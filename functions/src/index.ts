@@ -552,6 +552,11 @@ export const getReservationTime = onCall(
  * resend the notification.
  */
 export const notifyHead = onCall({region: REGION}, async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "Authentication required");
+  }
+
   const stationId = request.data?.stationId;
   if (!stationId || typeof stationId !== "string") {
     throw new HttpsError("invalid-argument", "stationId required");
@@ -565,6 +570,12 @@ export const notifyHead = onCall({region: REGION}, async (request) => {
   }
 
   const station = snap.data() as StationDoc;
+  if (station.ownerId !== callerUid) {
+    throw new HttpsError(
+      "permission-denied",
+      "Only the station owner can notify the queue",
+    );
+  }
 
   // Requirement: Do not allow Notify if someone is currently using the session.
   const currentSession = station.currentSession;
