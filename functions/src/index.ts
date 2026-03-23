@@ -602,10 +602,6 @@ export const notifyHead = onCall({region: REGION}, async (request) => {
   );
 
   if (!station.enforceCheckinLimit) {
-    const existingReservation = station.currentReservation;
-    if (existingReservation?.userId === nextUserId) {
-      return;
-    }
     await stationRef.update({
       currentReservation: {userId: nextUserId},
     });
