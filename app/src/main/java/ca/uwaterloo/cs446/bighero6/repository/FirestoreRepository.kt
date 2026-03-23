@@ -81,10 +81,11 @@ class FirestoreRepository {
     }
 
     /**
-     * Delete a station
+     * Delete a station and remove its id from every user's [User.currentWaitlists].
      */
     suspend fun deleteStation(stationId: String): Result<Unit> {
         return try {
+            removeStationFromAllUsersCurrentWaitlists(stationId)
             db.collection("stations")
                 .document(stationId)
                 .delete()
@@ -92,6 +93,33 @@ class FirestoreRepository {
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Removes [stationId] from [User.currentWaitlists] for all users that list it.
+     * Runs in batches of 500 (Firestore batch limit). Re-queries until none remain.
+     */
+    private suspend fun removeStationFromAllUsersCurrentWaitlists(stationId: String) {
+        val usersRef = db.collection("users")
+        val pageSize = 500L
+        while (true) {
+            val snapshot = usersRef
+                .whereArrayContains("currentWaitlists", stationId)
+                .limit(pageSize)
+                .get()
+                .await()
+            if (snapshot.documents.isEmpty()) break
+            val batch = db.batch()
+            for (doc in snapshot.documents) {
+                batch.update(
+                    doc.reference,
+                    "currentWaitlists",
+                    FieldValue.arrayRemove(stationId)
+                )
+            }
+            batch.commit().await()
+            if (snapshot.size() < pageSize) break
         }
     }
 
