@@ -31,17 +31,18 @@ service cloud.firestore {
       return data.attendees != null ? data.attendees : {};
     }
 
-    // Guests may only add/remove/reorder their own attendee entry (not others').
+    // Guests may only add or remove their own attendee key (join / leave / seated).
+    // In-place edits to an existing entry are denied so clients cannot rewrite
+    // joinedAt, status, or arbitrary nested fields on their own map entry.
+    // (Operators change joinedAt via the owner update path, not guest self-service.)
     function attendeesSelfOnlyDelta() {
       let before = attendeeMap(resource.data);
       let after = attendeeMap(request.resource.data);
       let d = after.diff(before);
-      return (d.addedKeys().size() == 0 ||
-          d.addedKeys().hasOnly([request.auth.uid])) &&
-        (d.removedKeys().size() == 0 ||
-          d.removedKeys().hasOnly([request.auth.uid])) &&
-        (d.changedKeys().size() == 0 ||
-          d.changedKeys().hasOnly([request.auth.uid]));
+      let uid = request.auth.uid;
+      return (d.addedKeys().size() == 0 || d.addedKeys().hasOnly([uid])) &&
+        (d.removedKeys().size() == 0 || d.removedKeys().hasOnly([uid])) &&
+        d.changedKeys().size() == 0;
     }
 
     function sessionOkNonOwner() {
