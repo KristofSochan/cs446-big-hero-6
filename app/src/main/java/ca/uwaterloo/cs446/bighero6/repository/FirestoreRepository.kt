@@ -1,5 +1,6 @@
 package ca.uwaterloo.cs446.bighero6.repository
 
+import ca.uwaterloo.cs446.bighero6.Constants
 import ca.uwaterloo.cs446.bighero6.data.Attendee
 import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.data.User
@@ -18,8 +19,6 @@ import java.util.UUID
  * Handles all Firestore database operations
  * Simple wrapper around Firebase SDK - easy to extend with new queries
  */
-/** Region where Cloud Functions are deployed (must match functions/src). */
-private const val FUNCTIONS_REGION = "us-east4"
 
 /**
  * Result of getSessionTime callable: initial remaining ms for elapsed-only countdown, or null.
@@ -50,7 +49,7 @@ class FirestoreRepository {
     }
 
     private val db = FirebaseFirestore.getInstance()
-    private val functions = FirebaseFunctions.getInstance(FUNCTIONS_REGION)
+    private val functions = FirebaseFunctions.getInstance(Constants.FUNCTIONS_REGION)
 
     /**
      * Create or update a station
