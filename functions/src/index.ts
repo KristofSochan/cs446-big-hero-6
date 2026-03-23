@@ -545,6 +545,187 @@ export const getReservationTime = onCall(
   },
 );
 
+export const endSession = onCall({region: REGION}, async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "Authentication required");
+  }
+
+  const stationId = request.data?.stationId;
+  if (typeof stationId !== "string" || !stationId.trim()) {
+    throw new HttpsError("invalid-argument", "stationId required");
+  }
+
+  const db = admin.firestore();
+  const stationRef = db.collection("stations").doc(stationId);
+
+  await db.runTransaction(async (tx) => {
+    const stationSnap = await tx.get(stationRef);
+    if (!stationSnap.exists) {
+      throw new HttpsError("not-found", "Station not found");
+    }
+
+    const station = stationSnap.data() as StationDoc;
+    const sessionUserId = station.currentSession?.userId;
+
+    if (!sessionUserId) {
+      return;
+    }
+
+    const isSessionUser = callerUid === sessionUserId;
+    const isStationOwner = callerUid === station.ownerId;
+
+    if (!isSessionUser && !isStationOwner) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only the active user or station owner can end this session",
+      );
+    }
+
+    tx.update(stationRef, {currentSession: null});
+
+    const userRef = db.collection("users").doc(sessionUserId);
+    tx.update(userRef, {
+      currentWaitlists: admin.firestore.FieldValue.arrayRemove(stationId),
+    });
+  });
+
+  return {ok: true};
+});
+
+/**
+ * Callable: station owner or the attendee themselves
+ * removes user from the waitlist and updates
+ * that user's currentWaitlists
+ */
+export const removeFromWaitlist = onCall(
+  {region: REGION},
+  async (request) => {
+    const callerUid = request.auth?.uid;
+    if (!callerUid) {
+      throw new HttpsError("unauthenticated", "Authentication required");
+    }
+
+    const stationId = request.data?.stationId;
+    const userId = request.data?.userId;
+
+    if (typeof stationId !== "string" || !stationId.trim()) {
+      throw new HttpsError("invalid-argument", "stationId required");
+    }
+    if (typeof userId !== "string" || !userId.trim()) {
+      throw new HttpsError("invalid-argument", "userId required");
+    }
+
+    const db = admin.firestore();
+    const stationRef = db.collection("stations").doc(stationId);
+
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(stationRef);
+      if (!snap.exists) {
+        throw new HttpsError("not-found", "Station not found");
+      }
+
+      const st = snap.data() as StationDoc;
+      const isSelf = callerUid === userId;
+      const isOwner = callerUid === st.ownerId;
+
+      if (!isSelf && !isOwner) {
+        throw new HttpsError(
+          "permission-denied",
+          "Only the user or station owner can remove this attendee",
+        );
+      }
+
+      const attendeeExists = !!st.attendees?.[userId];
+      if (!attendeeExists) {
+        return;
+      }
+
+      const stationUpdates: FirebaseFirestore.UpdateData = {
+        [`attendees.${userId}`]: admin.firestore.FieldValue.delete(),
+      };
+
+      if (st.currentReservation?.userId === userId) {
+        stationUpdates.currentReservation = admin.firestore.FieldValue.delete();
+      }
+
+      tx.update(stationRef, stationUpdates);
+
+      const userRef = db.collection("users").doc(userId);
+      tx.update(userRef, {
+        currentWaitlists: admin.firestore.FieldValue.arrayRemove(stationId),
+      });
+    });
+
+    return {ok: true};
+  },
+);
+
+export const deleteStation = onCall({region: REGION}, async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "Authentication required");
+  }
+
+  const stationId = request.data?.stationId;
+  if (typeof stationId !== "string" || !stationId.trim()) {
+    throw new HttpsError("invalid-argument", "stationId required");
+  }
+
+  const db = admin.firestore();
+  const stationRef = db.collection("stations").doc(stationId);
+
+  // --- validate first ---
+  const stationSnap = await stationRef.get();
+  if (!stationSnap.exists) {
+    throw new HttpsError("not-found", "Station not found");
+  }
+
+  const station = stationSnap.data() as StationDoc;
+  if (station.ownerId !== callerUid) {
+    throw new HttpsError(
+      "permission-denied",
+      "Only the station owner can delete this station",
+    );
+  }
+
+  // --- cleanup users ---
+  let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+  const pageSize = 500;
+
+  for (;;) {
+    let query: FirebaseFirestore.Query = db
+      .collection("users")
+      .where("currentWaitlists", "array-contains", stationId)
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(pageSize);
+
+    if (lastDoc) {
+      query = query.startAfter(lastDoc);
+    }
+
+    const snap = await query.get();
+    if (snap.empty) break;
+
+    const batch = db.batch();
+    for (const doc of snap.docs) {
+      batch.update(doc.ref, {
+        currentWaitlists: admin.firestore.FieldValue.arrayRemove(stationId),
+      });
+    }
+    await batch.commit();
+
+    lastDoc = snap.docs[snap.docs.length - 1];
+
+    if (snap.size < pageSize) break;
+  }
+
+  // --- delete station ---
+  await stationRef.delete();
+
+  return {ok: true};
+});
+
 /**
  * Callable: Notify the current head of the queue and, if enforceCheckinLimit is
  * enabled, start a check-in window for them. In manual notification mode this

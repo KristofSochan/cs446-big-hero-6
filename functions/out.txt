@@ -1,0 +1,573 @@
+diff --git a/app/src/main/java/ca/uwaterloo/cs446/bighero6/repository/FirestoreRepository.kt b/app/src/main/java/ca/uwaterloo/cs446/bighero6/repository/FirestoreRepository.kt
+index 0196606..0a5740c 100644
+--- a/app/src/main/java/ca/uwaterloo/cs446/bighero6/repository/FirestoreRepository.kt
++++ b/app/src/main/java/ca/uwaterloo/cs446/bighero6/repository/FirestoreRepository.kt
+@@ -3,6 +3,7 @@ package ca.uwaterloo.cs446.bighero6.repository
+ import ca.uwaterloo.cs446.bighero6.data.Attendee
+ import ca.uwaterloo.cs446.bighero6.data.Station
+ import ca.uwaterloo.cs446.bighero6.data.User
++import com.google.firebase.auth.FirebaseAuth
+ import com.google.firebase.Timestamp
+ import com.google.firebase.firestore.FieldPath
+ import com.google.firebase.firestore.FieldValue
+@@ -80,15 +81,11 @@ class FirestoreRepository {
+         }
+     }
+ 
+-    /**
+-     * Delete a station and remove its id from every user's [User.currentWaitlists].
+-     */
+     suspend fun deleteStation(stationId: String): Result<Unit> {
+         return try {
+-            removeStationFromAllUsersCurrentWaitlists(stationId)
+-            db.collection("stations")
+-                .document(stationId)
+-                .delete()
++            functions
++                .getHttpsCallable("deleteStation")
++                .call(hashMapOf("stationId" to stationId))
+                 .await()
+             Result.success(Unit)
+         } catch (e: Exception) {
+@@ -96,33 +93,6 @@ class FirestoreRepository {
+         }
+     }
+ 
+-    /**
+-     * Removes [stationId] from [User.currentWaitlists] for all users that list it.
+-     * Runs in batches of 500 (Firestore batch limit). Re-queries until none remain.
+-     */
+-    private suspend fun removeStationFromAllUsersCurrentWaitlists(stationId: String) {
+-        val usersRef = db.collection("users")
+-        val pageSize = 500L
+-        while (true) {
+-            val snapshot = usersRef
+-                .whereArrayContains("currentWaitlists", stationId)
+-                .limit(pageSize)
+-                .get()
+-                .await()
+-            if (snapshot.documents.isEmpty()) break
+-            val batch = db.batch()
+-            for (doc in snapshot.documents) {
+-                batch.update(
+-                    doc.reference,
+-                    "currentWaitlists",
+-                    FieldValue.arrayRemove(stationId)
+-                )
+-            }
+-            batch.commit().await()
+-            if (snapshot.size() < pageSize) break
+-        }
+-    }
+-
+     /**
+      * Get station (includes waitlist data)
+      */
+@@ -261,27 +231,17 @@ class FirestoreRepository {
+         }
+     }
+ 
+-    /**
+-     * Remove user from waitlist (transaction-safe).
+-     * Also clears currentReservation if it belongs to this user.
+-     */
+     suspend fun removeFromWaitlist(stationId: String, userId: String): Result<Unit> {
+         return try {
+-            db.runTransaction { transaction ->
+-                val stationRef = db.collection("stations").document(stationId)
+-                val stationDoc = transaction.get(stationRef)
+-                val station = stationDoc.toObject(Station::class.java)
+-                if (station?.attendees?.containsKey(userId) == true) {
+-                    transaction.update(stationRef, "attendees.$userId", FieldValue.delete())
+-                    val userRef = db.collection("users").document(userId)
+-                    transaction.update(userRef, "currentWaitlists", FieldValue.arrayRemove(stationId))
+-                    
+-                    // Clear reservation if it belongs to this user
+-                    if (station.currentReservation?.userId == userId) {
+-                        transaction.update(stationRef, "currentReservation", FieldValue.delete())
+-                    }
+-                }
+-            }.await()
++            functions
++                .getHttpsCallable("removeFromWaitlist")
++                .call(
++                    hashMapOf(
++                        "stationId" to stationId,
++                        "userId" to userId
++                    )
++                )
++                .await()
+             Result.success(Unit)
+         } catch (e: Exception) {
+             Result.failure(e)
+@@ -609,33 +569,13 @@ class FirestoreRepository {
+         }
+     }
+ 
+-    /**
+-     * End session - clears currentSession so next person can start,
+-     * and removes the station from the user's currentWaitlists.
+-     * If the session was already cleared (e.g. by the server expiration task),
+-     * returns success so the client doesn't show an error.
+-     */
+     suspend fun endSession(stationId: String): Result<Unit> {
+         return try {
+-            db.runTransaction { transaction ->
+-                val stationRef = db.collection("stations").document(stationId)
+-                val currentStation = transaction.get(stationRef).toObject(Station::class.java)
+-                val userId = currentStation?.currentSession?.userId
+-                    ?: throw IllegalStateException("No active session to end")
+-
+-                transaction.update(stationRef, "currentSession", null)
+-
+-                val userRef = db.collection("users").document(userId)
+-                transaction.update(userRef, "currentWaitlists", FieldValue.arrayRemove(stationId))
+-            }.await()
+-
++            functions
++                .getHttpsCallable("endSession")
++                .call(hashMapOf("stationId" to stationId))
++                .await()
+             Result.success(Unit)
+-        } catch (e: IllegalStateException) {
+-            if (e.message == "No active session to end") {
+-                Result.success(Unit)
+-            } else {
+-                Result.failure(e)
+-            }
+         } catch (e: Exception) {
+             Result.failure(e)
+         }
+diff --git a/functions/src/index.ts b/functions/src/index.ts
+index f425c15..6a1c87e 100644
+--- a/functions/src/index.ts
++++ b/functions/src/index.ts
+@@ -7,15 +7,15 @@
+  * See a full list of supported triggers at https://firebase.google.com/docs/functions
+  */
+ 
+-import {setGlobalOptions} from "firebase-functions";
+-import {onCall, HttpsError} from "firebase-functions/v2/https";
+-import {onTaskDispatched} from "firebase-functions/v2/tasks";
+-import {onDocumentUpdated} from "firebase-functions/v2/firestore";
+-import {getFunctions} from "firebase-admin/functions";
++import { setGlobalOptions } from "firebase-functions";
++import { onCall, HttpsError } from "firebase-functions/v2/https";
++import { onTaskDispatched } from "firebase-functions/v2/tasks";
++import { onDocumentUpdated } from "firebase-functions/v2/firestore";
++import { getFunctions } from "firebase-admin/functions";
+ import * as admin from "firebase-admin";
+ import * as logger from "firebase-functions/logger";
+-import {randomUUID} from "crypto";
+-import {Station as StationDoc, Attendee} from "./types";
++import { randomUUID } from "crypto";
++import { Station as StationDoc, Attendee } from "./types";
+ 
+ // Initialize Firebase Admin
+ admin.initializeApp();
+@@ -23,7 +23,7 @@ admin.initializeApp();
+ // us-east4 (Northern Virginia) - lower latency for Waterloo, ON
+ const REGION = "us-east4";
+ 
+-setGlobalOptions({maxInstances: 10, region: REGION});
++setGlobalOptions({ maxInstances: 10, region: REGION });
+ 
+ /**
+  * Returns YYYY-MM-DD in UTC for analytics bucketing.
+@@ -74,7 +74,7 @@ async function incrementQueueWaitAnalytics(
+     {
+       totalWaitTimeSeconds: admin.firestore.FieldValue.increment(waitSeconds),
+     },
+-    {merge: true},
++    { merge: true },
+   );
+ }
+ 
+@@ -93,7 +93,7 @@ async function incrementStartedSessionAnalytics(
+     {
+       totalSessions: admin.firestore.FieldValue.increment(1),
+     },
+-    {merge: true},
++    { merge: true },
+   );
+ }
+ 
+@@ -116,7 +116,7 @@ function analyticsIncrementNoShowTx(
+       totalWaitTimeSeconds: admin.firestore.FieldValue.increment(0),
+       totalNoShows: admin.firestore.FieldValue.increment(1),
+     },
+-    {merge: true},
++    { merge: true },
+   );
+ }
+ 
+@@ -126,7 +126,7 @@ function analyticsIncrementNoShowTx(
+  * - When session ends: Notify next person in line
+  */
+ export const onStationUpdate = onDocumentUpdated(
+-  {document: "stations/{stationId}", region: REGION},
++  { document: "stations/{stationId}", region: REGION },
+   async (event) => {
+     const before = event.data?.before.data() as StationDoc | undefined;
+     const after = event.data?.after.data() as StationDoc | undefined;
+@@ -169,9 +169,9 @@ export const onStationUpdate = onDocumentUpdated(
+         `Session started for station ${stationId}, scheduling expiration`,
+       );
+       const sessionId =
+-        typeof afterSession.sessionId === "string" ?
+-          afterSession.sessionId :
+-          null;
++        typeof afterSession.sessionId === "string"
++          ? afterSession.sessionId
++          : null;
+       if (!sessionId) {
+         logger.error(
+           `No currentSession.sessionId present for station ${stationId}; ` +
+@@ -243,7 +243,7 @@ async function scheduleSessionExpiration(
+     const scheduleTime = expiresAt.toDate();
+ 
+     await queue.enqueue(
+-      {stationId, sessionId},
++      { stationId, sessionId },
+       {
+         scheduleTime: scheduleTime,
+         dispatchDeadlineSeconds: 60 * 5, // 5 minutes max
+@@ -340,7 +340,7 @@ async function advanceQueue(
+ 
+   if (!station.enforceCheckinLimit) {
+     await stationRef.update({
+-      currentReservation: {userId: nextUserId},
++      currentReservation: { userId: nextUserId },
+     });
+     return;
+   }
+@@ -404,7 +404,7 @@ async function scheduleReservationExpiration(
+     const scheduleTime = expiresAt.toDate();
+ 
+     await queue.enqueue(
+-      {stationId, reservationId},
++      { stationId, reservationId },
+       {
+         scheduleTime,
+         dispatchDeadlineSeconds: 60 * 5,
+@@ -457,10 +457,10 @@ async function notifyUserAtPositionOne(
+     }
+ 
+     // Body copy mirrors GuestQueueCopy.yourTurn().
+-    const body = operatorManagesSessionsOnly ?
+-      `Your turn at ${stationName}! ` +
+-        "Please return to the host stand to be seated." :
+-      `Your turn at ${stationName}! ` +
++    const body = operatorManagesSessionsOnly
++      ? `Your turn at ${stationName}! ` +
++        "Please return to the host stand to be seated."
++      : `Your turn at ${stationName}! ` +
+         "Tap the NFC tag to start your session.";
+     const message = {
+       notification: {
+@@ -486,7 +486,7 @@ async function notifyUserAtPositionOne(
+  * Client uses initialRemaining = (expiresAtMillis - serverTimeMillis) / 1000
+  * then counts down by elapsed time only (no clock skew).
+  */
+-export const getSessionTime = onCall({region: REGION}, async (request) => {
++export const getSessionTime = onCall({ region: REGION }, async (request) => {
+   const stationId = request.data?.stationId;
+   if (!stationId || typeof stationId !== "string") {
+     throw new HttpsError("invalid-argument", "stationId required");
+@@ -518,7 +518,7 @@ export const getSessionTime = onCall({region: REGION}, async (request) => {
+  * then counts down by elapsed time only (same as session timer).
+  */
+ export const getReservationTime = onCall(
+-  {region: REGION},
++  { region: REGION },
+   async (request) => {
+     const stationId = request.data?.stationId;
+     if (!stationId || typeof stationId !== "string") {
+@@ -545,13 +545,194 @@ export const getReservationTime = onCall(
+   },
+ );
+ 
++export const endSession = onCall({ region: REGION }, async (request) => {
++  const callerUid = request.auth?.uid;
++  if (!callerUid) {
++    throw new HttpsError("unauthenticated", "Authentication required");
++  }
++
++  const stationId = request.data?.stationId;
++  if (typeof stationId !== "string" || !stationId.trim()) {
++    throw new HttpsError("invalid-argument", "stationId required");
++  }
++
++  const db = admin.firestore();
++  const stationRef = db.collection("stations").doc(stationId);
++
++  await db.runTransaction(async (tx) => {
++    const stationSnap = await tx.get(stationRef);
++    if (!stationSnap.exists) {
++      throw new HttpsError("not-found", "Station not found");
++    }
++
++    const station = stationSnap.data() as StationDoc;
++    const sessionUserId = station.currentSession?.userId;
++
++    if (!sessionUserId) {
++      return;
++    }
++
++    const isSessionUser = callerUid === sessionUserId;
++    const isStationOwner = callerUid === station.ownerId;
++
++    if (!isSessionUser && !isStationOwner) {
++      throw new HttpsError(
++        "permission-denied",
++        "Only the active user or station owner can end this session",
++      );
++    }
++
++    tx.update(stationRef, { currentSession: null });
++
++    const userRef = db.collection("users").doc(sessionUserId);
++    tx.update(userRef, {
++      currentWaitlists: admin.firestore.FieldValue.arrayRemove(stationId),
++    });
++  });
++
++  return { ok: true };
++});
++
++/**
++ * Callable: station owner or the attendee themselves
++ * removes user from the waitlist and updates
++ * that user's currentWaitlists
++ */
++export const removeFromWaitlist = onCall(
++  { region: REGION },
++  async (request) => {
++    const callerUid = request.auth?.uid;
++    if (!callerUid) {
++      throw new HttpsError("unauthenticated", "Authentication required");
++    }
++
++    const stationId = request.data?.stationId;
++    const userId = request.data?.userId;
++
++    if (typeof stationId !== "string" || !stationId.trim()) {
++      throw new HttpsError("invalid-argument", "stationId required");
++    }
++    if (typeof userId !== "string" || !userId.trim()) {
++      throw new HttpsError("invalid-argument", "userId required");
++    }
++
++    const db = admin.firestore();
++    const stationRef = db.collection("stations").doc(stationId);
++
++    await db.runTransaction(async (tx) => {
++      const snap = await tx.get(stationRef);
++      if (!snap.exists) {
++        throw new HttpsError("not-found", "Station not found");
++      }
++
++      const st = snap.data() as StationDoc;
++      const isSelf = callerUid === userId;
++      const isOwner = callerUid === st.ownerId;
++
++      if (!isSelf && !isOwner) {
++        throw new HttpsError(
++          "permission-denied",
++          "Only the user or station owner can remove this attendee",
++        );
++      }
++
++      const attendeeExists = !!st.attendees?.[userId];
++      if (!attendeeExists) {
++        return;
++      }
++
++      const stationUpdates: FirebaseFirestore.UpdateData = {
++        [`attendees.${userId}`]: admin.firestore.FieldValue.delete(),
++      };
++
++      if (st.currentReservation?.userId === userId) {
++        stationUpdates.currentReservation = admin.firestore.FieldValue.delete();
++      }
++
++      tx.update(stationRef, stationUpdates);
++
++      const userRef = db.collection("users").doc(userId);
++      tx.update(userRef, {
++        currentWaitlists: admin.firestore.FieldValue.arrayRemove(stationId),
++      });
++    });
++
++    return { ok: true };
++  },
++);
++
++export const deleteStation = onCall({ region: REGION }, async (request) => {
++  const callerUid = request.auth?.uid;
++  if (!callerUid) {
++    throw new HttpsError("unauthenticated", "Authentication required");
++  }
++
++  const stationId = request.data?.stationId;
++  if (typeof stationId !== "string" || !stationId.trim()) {
++    throw new HttpsError("invalid-argument", "stationId required");
++  }
++
++  const db = admin.firestore();
++  const stationRef = db.collection("stations").doc(stationId);
++
++  // --- validate first ---
++  const stationSnap = await stationRef.get();
++  if (!stationSnap.exists) {
++    throw new HttpsError("not-found", "Station not found");
++  }
++
++  const station = stationSnap.data() as StationDoc;
++  if (station.ownerId !== callerUid) {
++    throw new HttpsError(
++      "permission-denied",
++      "Only the station owner can delete this station",
++    );
++  }
++
++  // --- cleanup users ---
++  let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
++  const pageSize = 500;
++
++  for (;;) {
++    let query: FirebaseFirestore.Query = db
++      .collection("users")
++      .where("currentWaitlists", "array-contains", stationId)
++      .orderBy(admin.firestore.FieldPath.documentId())
++      .limit(pageSize);
++
++    if (lastDoc) {
++      query = query.startAfter(lastDoc);
++    }
++
++    const snap = await query.get();
++    if (snap.empty) break;
++
++    const batch = db.batch();
++    for (const doc of snap.docs) {
++      batch.update(doc.ref, {
++        currentWaitlists: admin.firestore.FieldValue.arrayRemove(stationId),
++      });
++    }
++    await batch.commit();
++
++    lastDoc = snap.docs[snap.docs.length - 1];
++
++    if (snap.size < pageSize) break;
++  }
++
++  // --- delete station ---
++  await stationRef.delete();
++
++  return { ok: true };
++});
++
+ /**
+  * Callable: Notify the current head of the queue and, if enforceCheckinLimit is
+  * enabled, start a check-in window for them. In manual notification mode this
+  * is the primary way guests are notified; in auto mode it can be used to
+  * resend the notification.
+  */
+-export const notifyHead = onCall({region: REGION}, async (request) => {
++export const notifyHead = onCall({ region: REGION }, async (request) => {
+   const callerUid = request.auth?.uid;
+   if (!callerUid) {
+     throw new HttpsError("unauthenticated", "Authentication required");
+@@ -614,7 +795,7 @@ export const notifyHead = onCall({region: REGION}, async (request) => {
+ 
+   if (!station.enforceCheckinLimit) {
+     await stationRef.update({
+-      currentReservation: {userId: nextUserId},
++      currentReservation: { userId: nextUserId },
+     });
+     return;
+   }
+@@ -648,7 +829,7 @@ export const expireSession = onTaskDispatched(
+     },
+   },
+   async (req) => {
+-    const {stationId, sessionId} = req.data as {
++    const { stationId, sessionId } = req.data as {
+       stationId: string;
+       sessionId?: string;
+     };
+@@ -676,9 +857,9 @@ export const expireSession = onTaskDispatched(
+       }
+ 
+       const currentSessionId =
+-        typeof currentSession.sessionId === "string" ?
+-          currentSession.sessionId :
+-          null;
++        typeof currentSession.sessionId === "string"
++          ? currentSession.sessionId
++          : null;
+       if (sessionId && currentSessionId && currentSessionId !== sessionId) {
+         // Stale task from a previous session; ignore quietly.
+         logger.info(
+@@ -697,9 +878,9 @@ export const expireSession = onTaskDispatched(
+       }
+ 
+       const sessionUserId =
+-        typeof currentSession.userId === "string" ?
+-          currentSession.userId :
+-          null;
++        typeof currentSession.userId === "string"
++          ? currentSession.userId
++          : null;
+ 
+       // Expire the session and clean up the user's waitlist entry.
+       await db.runTransaction(async (tx) => {
+@@ -709,9 +890,9 @@ export const expireSession = onTaskDispatched(
+         const latestSession = latest.data()?.currentSession;
+         if (!latestSession || !latestSession.expiresAt) return;
+         const latestSessionId =
+-          typeof latestSession.sessionId === "string" ?
+-            latestSession.sessionId :
+-            null;
++          typeof latestSession.sessionId === "string"
++            ? latestSession.sessionId
++            : null;
+         if (sessionId && latestSessionId && latestSessionId !== sessionId) {
+           logger.info(
+             "Ignoring stale expireSession task in transaction for station " +
+@@ -727,9 +908,9 @@ export const expireSession = onTaskDispatched(
+         });
+ 
+         const latestUserId =
+-          typeof latestSession.userId === "string" ?
+-            latestSession.userId :
+-            null;
++          typeof latestSession.userId === "string"
++            ? latestSession.userId
++            : null;
+         const userIdToUpdate = latestUserId ?? sessionUserId;
+         if (userIdToUpdate) {
+           const userRef = db.collection("users").doc(userIdToUpdate);
+@@ -767,7 +948,7 @@ export const expireReservation = onTaskDispatched(
+     },
+   },
+   async (req) => {
+-    const {stationId, reservationId} = req.data as {
++    const { stationId, reservationId } = req.data as {
+       stationId: string;
+       reservationId?: string;
+     };
+@@ -813,9 +994,9 @@ export const expireReservation = onTaskDispatched(
+       }
+ 
+       const currentReservationId =
+-        typeof reservation.reservationId === "string" ?
+-          reservation.reservationId :
+-          null;
++        typeof reservation.reservationId === "string"
++          ? reservation.reservationId
++          : null;
+       if (
+         reservationId &&
+         currentReservationId &&
