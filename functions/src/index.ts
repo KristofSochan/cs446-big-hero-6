@@ -641,9 +641,9 @@ export const removeFromWaitlist = onCall(
         return;
       }
 
-      const stationUpdates: FirebaseFirestore.UpdateData = {
+      const stationUpdates = {
         [`attendees.${userId}`]: admin.firestore.FieldValue.delete(),
-      };
+      } as Record<string, unknown>;
 
       if (st.currentReservation?.userId === userId) {
         stationUpdates.currentReservation = admin.firestore.FieldValue.delete();
