@@ -111,8 +111,8 @@ service cloud.firestore {
     // Analytics (written only by Cloud Functions / Admin SDK)
     match /stationAnalytics/{stationId}/daily/{dayId} {
       allow read: if signedIn() &&
-        get(/databases/$(database)/documents/stations/$(stationId))
-          .data.ownerId == request.auth.uid;
+        exists(/databases/$(database)/documents/stations/$(stationId)) &&
+        get(/databases/$(database)/documents/stations/$(stationId)).data.ownerId == request.auth.uid;
       allow write: if false;
     }
   }
