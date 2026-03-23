@@ -498,7 +498,6 @@ class FirestoreRepository {
             id = userId,  // Stored field "id" - mirrors document ID
             fcmToken = fcmToken,
             name = name ?: "",
-            fcmToken = fcmToken,
             currentWaitlists = emptyList()
             // docId will be auto-mapped from document ID when reading
             // createdAt will be set by server via @ServerTimestamp
