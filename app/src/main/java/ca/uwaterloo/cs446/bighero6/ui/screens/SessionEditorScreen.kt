@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import ca.uwaterloo.cs446.bighero6.ui.components.NavigateToHomeButton
 import ca.uwaterloo.cs446.bighero6.data.JoinFormField
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import kotlinx.coroutines.launch
@@ -45,11 +46,14 @@ fun SessionEditorScreen(
     val joinFormFields = remember { mutableStateListOf<JoinFormField>() }
 
     var isLoading by remember { mutableStateOf(true) }
+    var loadError by remember(stationId) { mutableStateOf<String?>(null) }
     val repository = remember { FirestoreRepository() }
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
     LaunchedEffect(stationId) {
+        isLoading = true
+        loadError = null
         val station = repository.getStation(stationId)
         if (station != null) {
             stationName = station.name
@@ -89,6 +93,9 @@ fun SessionEditorScreen(
                 else -> StationPresetSelection.Custom
             }
             isLoading = false
+        } else {
+            isLoading = false
+            loadError = "Station not found"
         }
     }
 
@@ -110,6 +117,16 @@ fun SessionEditorScreen(
         if (isLoading) {
             Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
+            }
+        } else if (loadError != null) {
+            Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(loadError!!, color = MaterialTheme.colorScheme.error)
+                    NavigateToHomeButton(
+                        navController = navController,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
             }
         } else {
             Column(

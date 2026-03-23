@@ -15,6 +15,7 @@ import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
+import ca.uwaterloo.cs446.bighero6.ui.components.NavigateToHomeButton
 import ca.uwaterloo.cs446.bighero6.viewmodel.SessionViewModel
 import java.util.concurrent.TimeUnit
 
@@ -141,9 +142,7 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
             CircularProgressIndicator()
         } else if (startError != null) {
             Text(startError!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 16.dp))
-            TextButton(onClick = {
-                navController.navigate(Screen.MyWaitlists.route) { popUpTo(Screen.MyWaitlists.route) { inclusive = false } }
-            }) { Text("Back to My Waitlists") }
+            NavigateToHomeButton(navController = navController)
         } else {
             Text("Session Active", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 8.dp))
 
@@ -228,16 +227,10 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
                 }
             }
 
-            TextButton(
-                onClick = {
-                    navController.navigate(Screen.MyWaitlists.route) {
-                        popUpTo(Screen.MyWaitlists.route) { inclusive = false }
-                    }
-                },
+            NavigateToHomeButton(
+                navController = navController,
                 modifier = Modifier.padding(top = 16.dp)
-            ) {
-            Text("Back to My Waitlists")
-            }
+            )
         }
     }
 }

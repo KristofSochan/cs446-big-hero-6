@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import ca.uwaterloo.cs446.bighero6.ui.components.NavigateToHomeButton
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import ca.uwaterloo.cs446.bighero6.repository.StationAnalyticsDaily
 import kotlin.math.roundToLong
@@ -95,7 +96,15 @@ fun StationAnalyticsScreen(
             error != null -> Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
-            ) { Text(error!!, color = MaterialTheme.colorScheme.error) }
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error)
+                    NavigateToHomeButton(
+                        navController = navController,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
+            }
 
             else -> Column(
                 modifier = Modifier
