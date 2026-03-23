@@ -453,22 +453,22 @@ class FirestoreRepository {
                 .await()
             
             if (userDoc.exists()) {
-                val existingUser = userDoc.toObject(User::class.java)
+                var existingUser = userDoc.toObject(User::class.java)
                 // user exists but fcmToken should be updated on firebase
                 if (existingUser != null && fcmToken != null &&
                    (existingUser.fcmToken == null || existingUser.fcmToken != fcmToken)){
                     db.collection("users").document(userId).update("fcmToken", fcmToken).await()
-                    existingUser.copy(fcmToken = fcmToken)
+                    existingUser = existingUser.copy(fcmToken = fcmToken)
                 }
 
                 if (existingUser != null && name != null && existingUser.name != name) {
                     // Update name if provided and different
                     db.collection("users").document(userId).update("name", name).await()
-                    existingUser.copy(name = name)
+                    existingUser = existingUser.copy(name = name)
                 }
 
                 // if existing user does not exist, make one
-                existingUser ?: createUserDocument(userId, name)
+                existingUser ?: createUserDocument(userId, name, fcmToken)
             } else {
                 createUserDocument(userId, name, fcmToken)
             }
