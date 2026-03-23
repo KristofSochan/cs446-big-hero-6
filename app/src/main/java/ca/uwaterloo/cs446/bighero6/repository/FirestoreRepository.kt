@@ -1,5 +1,6 @@
 package ca.uwaterloo.cs446.bighero6.repository
 
+import ca.uwaterloo.cs446.bighero6.Constants
 import ca.uwaterloo.cs446.bighero6.data.Attendee
 import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.data.User
@@ -18,8 +19,6 @@ import java.util.UUID
  * Handles all Firestore database operations
  * Simple wrapper around Firebase SDK - easy to extend with new queries
  */
-/** Region where Cloud Functions are deployed (must match functions/src). */
-private const val FUNCTIONS_REGION = "us-east4"
 
 /**
  * Result of getSessionTime callable: initial remaining ms for elapsed-only countdown, or null.
@@ -50,7 +49,7 @@ class FirestoreRepository {
     }
 
     private val db = FirebaseFirestore.getInstance()
-    private val functions = FirebaseFunctions.getInstance(FUNCTIONS_REGION)
+    private val functions = FirebaseFunctions.getInstance(Constants.FUNCTIONS_REGION)
 
     /**
      * Create or update a station
@@ -80,46 +79,15 @@ class FirestoreRepository {
         }
     }
 
-    /**
-     * Delete a station and remove its id from every user's [User.currentWaitlists].
-     */
     suspend fun deleteStation(stationId: String): Result<Unit> {
         return try {
-            removeStationFromAllUsersCurrentWaitlists(stationId)
-            db.collection("stations")
-                .document(stationId)
-                .delete()
+            functions
+                .getHttpsCallable("deleteStation")
+                .call(hashMapOf("stationId" to stationId))
                 .await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
-        }
-    }
-
-    /**
-     * Removes [stationId] from [User.currentWaitlists] for all users that list it.
-     * Runs in batches of 500 (Firestore batch limit). Re-queries until none remain.
-     */
-    private suspend fun removeStationFromAllUsersCurrentWaitlists(stationId: String) {
-        val usersRef = db.collection("users")
-        val pageSize = 500L
-        while (true) {
-            val snapshot = usersRef
-                .whereArrayContains("currentWaitlists", stationId)
-                .limit(pageSize)
-                .get()
-                .await()
-            if (snapshot.documents.isEmpty()) break
-            val batch = db.batch()
-            for (doc in snapshot.documents) {
-                batch.update(
-                    doc.reference,
-                    "currentWaitlists",
-                    FieldValue.arrayRemove(stationId)
-                )
-            }
-            batch.commit().await()
-            if (snapshot.size() < pageSize) break
         }
     }
 
@@ -261,27 +229,17 @@ class FirestoreRepository {
         }
     }
 
-    /**
-     * Remove user from waitlist (transaction-safe).
-     * Also clears currentReservation if it belongs to this user.
-     */
     suspend fun removeFromWaitlist(stationId: String, userId: String): Result<Unit> {
         return try {
-            db.runTransaction { transaction ->
-                val stationRef = db.collection("stations").document(stationId)
-                val stationDoc = transaction.get(stationRef)
-                val station = stationDoc.toObject(Station::class.java)
-                if (station?.attendees?.containsKey(userId) == true) {
-                    transaction.update(stationRef, "attendees.$userId", FieldValue.delete())
-                    val userRef = db.collection("users").document(userId)
-                    transaction.update(userRef, "currentWaitlists", FieldValue.arrayRemove(stationId))
-                    
-                    // Clear reservation if it belongs to this user
-                    if (station.currentReservation?.userId == userId) {
-                        transaction.update(stationRef, "currentReservation", FieldValue.delete())
-                    }
-                }
-            }.await()
+            functions
+                .getHttpsCallable("removeFromWaitlist")
+                .call(
+                    hashMapOf(
+                        "stationId" to stationId,
+                        "userId" to userId
+                    )
+                )
+                .await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -609,33 +567,13 @@ class FirestoreRepository {
         }
     }
 
-    /**
-     * End session - clears currentSession so next person can start,
-     * and removes the station from the user's currentWaitlists.
-     * If the session was already cleared (e.g. by the server expiration task),
-     * returns success so the client doesn't show an error.
-     */
     suspend fun endSession(stationId: String): Result<Unit> {
         return try {
-            db.runTransaction { transaction ->
-                val stationRef = db.collection("stations").document(stationId)
-                val currentStation = transaction.get(stationRef).toObject(Station::class.java)
-                val userId = currentStation?.currentSession?.userId
-                    ?: throw IllegalStateException("No active session to end")
-
-                transaction.update(stationRef, "currentSession", null)
-
-                val userRef = db.collection("users").document(userId)
-                transaction.update(userRef, "currentWaitlists", FieldValue.arrayRemove(stationId))
-            }.await()
-
+            functions
+                .getHttpsCallable("endSession")
+                .call(hashMapOf("stationId" to stationId))
+                .await()
             Result.success(Unit)
-        } catch (e: IllegalStateException) {
-            if (e.message == "No active session to end") {
-                Result.success(Unit)
-            } else {
-                Result.failure(e)
-            }
         } catch (e: Exception) {
             Result.failure(e)
         }

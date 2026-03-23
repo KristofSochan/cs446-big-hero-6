@@ -184,3 +184,5 @@ fabric.properties
 local.properties
 **/build/
 .idea/
+
+emulator-data/

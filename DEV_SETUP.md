@@ -30,11 +30,34 @@ npm run build
 npm run deploy
 ```
 
+## Deploy rules
+
+```bash
+firebase deploy --only firestore:rules
+```
+
 ## Test Locally
 
 ```bash
 cd functions
 npm run serve
+```
+
+## Firebase emulators
+
+Good for testing firestore security rules (seeing more detailed errors)
+
+**Before starting emulator, change build.gradle.kts to the following:**
+
+```kts
+// DEV_SETUP: change this to true to use local firebase emulator
+buildConfigField("boolean", "USE_FIREBASE_EMULATOR", "false") // <---- CHANGE THIS TO TRUE!
+```
+
+Then run this in a terminal:
+
+```bash
+firebase emulators:start --import=./emulator-data --export-on-exit
 ```
 
 ## Android Studio Tips

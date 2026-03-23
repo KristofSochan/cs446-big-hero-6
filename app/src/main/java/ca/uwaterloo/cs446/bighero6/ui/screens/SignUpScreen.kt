@@ -12,8 +12,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.navigation.Screen
+import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.userProfileChangeRequest
+import kotlinx.coroutines.launch
 
 @Composable
 fun SignUpScreen(navController: NavController) {
@@ -24,6 +26,8 @@ fun SignUpScreen(navController: NavController) {
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val auth = FirebaseAuth.getInstance()
+    val repository = remember { FirestoreRepository() }
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -82,7 +86,7 @@ fun SignUpScreen(navController: NavController) {
 
         if (errorMessage != null) {
             Text(
-                text = errorMessage!!,
+                text = errorMessage.orEmpty(),
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = 8.dp)
             )
@@ -103,13 +107,43 @@ fun SignUpScreen(navController: NavController) {
                         .addOnCompleteListener { task ->
                             if (task.isSuccessful) {
                                 val user = auth.currentUser
-                                val profileUpdates = userProfileChangeRequest {
-                                    displayName = name
-                                }
-                                user?.updateProfile(profileUpdates)?.addOnCompleteListener {
+                                if (user == null) {
                                     isLoading = false
-                                    navController.navigate(Screen.MyWaitlists.route) {
-                                        popUpTo(Screen.SignUp.route) { inclusive = true }
+                                    errorMessage = "Registration succeeded without a user"
+                                    return@addOnCompleteListener
+                                }
+                                val trimmedName = name.trim()
+                                val profileUpdates = userProfileChangeRequest {
+                                    displayName = trimmedName
+                                }
+                                user.updateProfile(profileUpdates).addOnCompleteListener {
+                                    if (it.isSuccessful) {
+                                        scope.launch {
+                                            try {
+                                                repository.getOrCreateUser(
+                                                    user.uid,
+                                                    trimmedName
+                                                )
+                                                isLoading = false
+                                                navController.navigate(
+                                                    Screen.MyWaitlists.route
+                                                ) {
+                                                    popUpTo(
+                                                        Screen.SignUp.route
+                                                    ) { inclusive = true }
+                                                }
+                                            } catch (e: Exception) {
+                                                isLoading = false
+                                                errorMessage =
+                                                    e.message
+                                                        ?: "Failed to create user profile"
+                                            }
+                                        }
+                                    } else {
+                                        isLoading = false
+                                        errorMessage =
+                                            it.exception?.message
+                                                ?: "Failed to save profile"
                                     }
                                 }
                             } else {
