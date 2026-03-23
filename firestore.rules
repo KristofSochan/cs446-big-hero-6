@@ -16,30 +16,15 @@ service cloud.firestore {
       return request.resource.data.ownerId == resource.data.ownerId;
     }
 
-    // All config fields that only the station owner may change (guest self-service
-    // must leave these unchanged).
-    function stationConfigUnchanged() {
-      return request.resource.data.name == resource.data.name &&
-        request.resource.data.allowMultipleWaitlists ==
-          resource.data.allowMultipleWaitlists &&
-        request.resource.data.isActive == resource.data.isActive &&
-        request.resource.data.sessionDurationSeconds ==
-          resource.data.sessionDurationSeconds &&
-        request.resource.data.mode == resource.data.mode &&
-        request.resource.data.autoJoinEnabled ==
-          resource.data.autoJoinEnabled &&
-        request.resource.data.operatorManagesSessionsOnly ==
-          resource.data.operatorManagesSessionsOnly &&
-        request.resource.data.notificationMode ==
-          resource.data.notificationMode &&
-        request.resource.data.showPositionToGuests ==
-          resource.data.showPositionToGuests &&
-        request.resource.data.joinFormFields == resource.data.joinFormFields &&
-        request.resource.data.enforceCheckinLimit ==
-          resource.data.enforceCheckinLimit &&
-        request.resource.data.checkinWindowSeconds ==
-          resource.data.checkinWindowSeconds &&
-        request.resource.data.createdAt == resource.data.createdAt;
+    // Non-owners may only touch queue/session fields at the top level (all other
+    // fields — id, name, ownerId, config, etc. — are implicitly protected).
+    function guestOnlyAllowedTopLevelKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly([
+          'attendees',
+          'currentSession',
+          'currentReservation'
+        ]);
     }
 
     function attendeeMap(data) {
@@ -76,7 +61,7 @@ service cloud.firestore {
 
     function guestSelfServiceUpdate() {
       return signedIn() &&
-        stationConfigUnchanged() &&
+        guestOnlyAllowedTopLevelKeys() &&
         ownerIdUnchanged() &&
         attendeesSelfOnlyDelta() &&
         sessionOkNonOwner() &&
