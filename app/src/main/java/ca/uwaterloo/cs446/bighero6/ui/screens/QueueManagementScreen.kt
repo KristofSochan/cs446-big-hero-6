@@ -231,7 +231,8 @@ fun QueueManagementScreen(
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
-                        
+                        val reservationUserId = station!!.currentReservation?.userId
+
                         LazyColumn(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -240,6 +241,20 @@ fun QueueManagementScreen(
                                 val joinedAtDate = attendee.joinedAt.toDate()
                                 val timeFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
                                 val attendeeName = userCache[attendee.userId]?.name?.ifEmpty { null } ?: "${attendee.userId.take(8)}..."
+                                val isNotified = !reservationUserId.isNullOrBlank() &&
+                                    reservationUserId == attendee.userId
+                                val statusChipLabel = when {
+                                    isNotified -> "NOTIFIED"
+                                    attendee.status == "waiting" -> "WAITING"
+                                    else -> attendee.status.uppercase()
+                                }
+                                val statusChipColor = when {
+                                    isNotified ->
+                                        MaterialTheme.colorScheme.tertiaryContainer
+                                    attendee.status == "waiting" ->
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    else -> MaterialTheme.colorScheme.primaryContainer
+                                }
 
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
@@ -284,14 +299,11 @@ fun QueueManagementScreen(
                                         
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Surface(
-                                                color = if (attendee.status == "waiting") 
-                                                    MaterialTheme.colorScheme.secondaryContainer 
-                                                else 
-                                                    MaterialTheme.colorScheme.primaryContainer,
+                                                color = statusChipColor,
                                                 shape = MaterialTheme.shapes.extraSmall
                                             ) {
                                                 Text(
-                                                    text = attendee.status.uppercase(),
+                                                    text = statusChipLabel,
                                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                                     style = MaterialTheme.typography.labelSmall
                                                 )
