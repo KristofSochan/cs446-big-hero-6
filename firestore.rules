@@ -2,8 +2,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- helpers ---
-
     function signedIn() {
       return request.auth != null;
     }
@@ -16,8 +14,6 @@ service cloud.firestore {
       return request.resource.data.ownerId == resource.data.ownerId;
     }
 
-    // Non-owners may only touch queue/session fields at the top level (all other
-    // fields — id, name, ownerId, config, etc. — are implicitly protected).
     function guestOnlyAllowedTopLevelKeys() {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly([
@@ -31,10 +27,6 @@ service cloud.firestore {
       return data.attendees != null ? data.attendees : {};
     }
 
-    // Guests may only add or remove their own attendee key (join / leave / seated).
-    // In-place edits to an existing entry are denied so clients cannot rewrite
-    // joinedAt, status, or arbitrary nested fields on their own map entry.
-    // (Operators change joinedAt via the owner update path, not guest self-service.)
     function attendeesSelfOnlyDelta() {
       let before = attendeeMap(resource.data);
       let after = attendeeMap(request.resource.data);
@@ -45,10 +37,19 @@ service cloud.firestore {
         d.changedKeys().size() == 0;
     }
 
+    function currentSessionOrNull(data) {
+      return data.keys().hasAny(['currentSession']) ? data.currentSession : null;
+    }
+
+    function currentReservationOrNull(data) {
+      return data.keys().hasAny(['currentReservation']) ? data.currentReservation : null;
+    }
+
     function sessionOkNonOwner() {
-      let before = resource.data.currentSession;
-      let after = request.resource.data.currentSession;
+      let before = currentSessionOrNull(resource.data);
+      let after = currentSessionOrNull(request.resource.data);
       let operatorOnly = resource.data.operatorManagesSessionsOnly == true;
+
       return before == after ||
         (!operatorOnly &&
           before == null &&
@@ -62,10 +63,13 @@ service cloud.firestore {
     }
 
     function reservationOkNonOwner() {
-      let before = resource.data.currentReservation;
-      let after = request.resource.data.currentReservation;
+      let before = currentReservationOrNull(resource.data);
+      let after = currentReservationOrNull(request.resource.data);
+
       return before == after ||
-        (before != null && after == null && before.userId == request.auth.uid);
+        (before != null &&
+          after == null &&
+          before.userId == request.auth.uid);
     }
 
     function guestSelfServiceUpdate() {
@@ -77,17 +81,15 @@ service cloud.firestore {
         reservationOkNonOwner();
     }
 
-    // USERS
     match /users/{userId} {
       allow read: if signedIn();
       allow create: if signedIn() && request.auth.uid == userId;
       allow update, delete: if signedIn() && request.auth.uid == userId;
     }
 
-    // STATIONS
     function listOwnStationsQuery() {
       return signedIn() &&
-            request.auth.uid == resource.data.ownerId;
+        request.auth.uid == resource.data.ownerId;
     }
 
     match /stations/{stationId} {
@@ -108,7 +110,6 @@ service cloud.firestore {
         );
     }
 
-    // Analytics (written only by Cloud Functions / Admin SDK)
     match /stationAnalytics/{stationId}/daily/{dayId} {
       allow read: if signedIn() &&
         exists(/databases/$(database)/documents/stations/$(stationId)) &&
