@@ -30,6 +30,12 @@ npm run build
 npm run deploy
 ```
 
+## Deploy rules
+
+```bash
+firebase deploy --only firestore:rules
+```
+
 ## Test Locally
 
 ```bash

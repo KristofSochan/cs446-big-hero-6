@@ -83,17 +83,6 @@ service cloud.firestore {
         reservationOkNonOwner();
     }
 
-    // "My Stations" query: must filter by ownerId == caller (see Android
-    // subscribeToOwnedStations).
-    function listOwnStationsQuery() {
-      return signedIn() &&
-        request.query.limit <= 100 &&
-        request.query.filters.size() >= 1 &&
-        request.query.filters[0].fieldPath == 'ownerId' &&
-        request.query.filters[0].op == '==' &&
-        request.query.filters[0].value == request.auth.uid;
-    }
-
     // USERS
     match /users/{userId} {
       allow read: if signedIn();
@@ -102,9 +91,13 @@ service cloud.firestore {
     }
 
     // STATIONS
-    match /stations/{stationId} {
-      allow read: if true;
+    function listOwnStationsQuery() {
+      return signedIn() &&
+            request.auth.uid == resource.data.ownerId;
+    }
 
+    match /stations/{stationId} {
+      allow get: if true;
       allow list: if listOwnStationsQuery();
 
       allow create: if signedIn() &&
