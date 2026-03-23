@@ -26,7 +26,8 @@ export interface JoinFormField {
 
 export interface CurrentReservation {
   userId: string;
-  expiresAt: admin.firestore.Timestamp;
+  /** Present when enforceCheckinLimit is on; omitted for notify-only state. */
+  expiresAt?: admin.firestore.Timestamp;
   reservationId?: string;
 }
 

@@ -5,6 +5,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -141,7 +142,14 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
         if (!initialResolutionDone) {
             CircularProgressIndicator()
         } else if (startError != null) {
-            Text(startError!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 16.dp))
+            Text(
+                text = startError!!,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            )
             NavigateToHomeButton(navController = navController)
         } else {
             Text("Session Active", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 8.dp))
@@ -209,7 +217,14 @@ fun SessionActiveScreen(stationId: String, navController: NavController, viewMod
 
             when (val state = endSessionState) {
                 is SessionViewModel.EndSessionState.Error ->
-                    Text(state.message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 8.dp))
+                    Text(
+                        text = state.message,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                    )
                 else -> {}
             }
 

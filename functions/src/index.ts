@@ -338,7 +338,12 @@ async function advanceQueue(
     station.operatorManagesSessionsOnly ?? false,
   );
 
-  if (!station.enforceCheckinLimit) return;
+  if (!station.enforceCheckinLimit) {
+    await stationRef.update({
+      currentReservation: {userId: nextUserId},
+    });
+    return;
+  }
 
   const checkinWindowSeconds = station.checkinWindowSeconds ?? 60;
   await createReservationAndScheduleExpiration({
@@ -596,8 +601,12 @@ export const notifyHead = onCall({region: REGION}, async (request) => {
     operatorOnly,
   );
 
-  // If check-in enforcement is off, notifying the guest is all we do.
-  if (!station.enforceCheckinLimit) return;
+  if (!station.enforceCheckinLimit) {
+    await stationRef.update({
+      currentReservation: {userId: nextUserId},
+    });
+    return;
+  }
 
   // If a reservation already exists for this user, don't reset it.
   const existingReservation = station.currentReservation;
@@ -783,6 +792,15 @@ export const expireReservation = onTaskDispatched(
         return;
       }
 
+      const reservationExpiresAt = reservation.expiresAt;
+      if (!reservationExpiresAt) {
+        logger.info(
+          `Station ${stationId} has notify-only reservation (no expiresAt); ` +
+            "skipping reservation expiration",
+        );
+        return;
+      }
+
       const currentReservationId =
         typeof reservation.reservationId === "string" ?
           reservation.reservationId :
@@ -797,7 +815,7 @@ export const expireReservation = onTaskDispatched(
       }
 
       const now = admin.firestore.Timestamp.now();
-      if (reservation.expiresAt.toMillis() > now.toMillis()) {
+      if (reservationExpiresAt.toMillis() > now.toMillis()) {
         // Not expired yet. Can happen if this task is stale and the reservation
         // was refreshed/replaced, or if Cloud Tasks dispatch ran early.
         return;
@@ -821,8 +839,9 @@ export const expireReservation = onTaskDispatched(
             typeof currentReservation.reservationId === "string" &&
             currentReservation.reservationId !== reservationId) ||
           currentReservation.userId !== reservation.userId ||
+          !currentReservation.expiresAt ||
           currentReservation.expiresAt.toMillis() !==
-            reservation.expiresAt.toMillis()
+            reservationExpiresAt.toMillis()
         ) {
           return;
         }
