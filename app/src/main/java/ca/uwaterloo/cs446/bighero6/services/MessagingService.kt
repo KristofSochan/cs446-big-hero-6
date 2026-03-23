@@ -8,14 +8,22 @@ import com.google.firebase.messaging.RemoteMessage
 
 class MessagingService : FirebaseMessagingService(){
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
+        Log.d("MessagingService", "Remote Message Recieved")
+
         // Method 1: Handle notification payload
         remoteMessage.notification?.let {
             // Logic to display a notification
+            val title = it.title
+            val body = it.body
+
+            Log.d("MessagingService", "Notification Title: $title, Notification Body: $body")
         }
 
         // Method 2: Handle data payload (custom key-value pairs)
         if (remoteMessage.data.isNotEmpty()) {
-            // Logic to process raw data
+            remoteMessage.data.forEach { (key, value) ->
+                Log.d("MessagingService", "Data Payload - Key: $key, Value: $value")
+            }
         }
     }
 

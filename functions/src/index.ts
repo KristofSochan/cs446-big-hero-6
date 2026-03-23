@@ -14,10 +14,7 @@ import {onDocumentUpdated} from "firebase-functions/v2/firestore";
 import {randomUUID} from "crypto";
 import * as admin from "firebase-admin";
 import {getFunctions} from "firebase-admin/functions";
-import {setGlobalOptions} from "firebase-functions";
 import * as logger from "firebase-functions/logger";
-import {HttpsError, onCall} from "firebase-functions/v2/https";
-import {onTaskDispatched} from "firebase-functions/v2/tasks";
 import {Attendee, Station as StationDoc} from "./types";
 
 // Initialize Firebase Admin
@@ -901,6 +898,7 @@ export const expireSession = onTaskDispatched(
       sessionId?: string;
     };
     const db = admin.firestore();
+    logger.info(`Expiring session for station ${stationId}`);
 
     try {
       const stationRef = db.collection("stations").doc(stationId);
@@ -1136,6 +1134,14 @@ export const expireReservation = onTaskDispatched(
         `Expired reservation and removed user ${
           reservation.userId
         } from station ${stationId}`,
+      );
+
+      const stationName =
+        typeof station.name === "string" ? station.name : "this station";
+      await notifyUserSessionExpired(
+        reservation.userId,
+        stationId,
+        stationName,
       );
 
       // Reload station and advance queue for next person, if any.
