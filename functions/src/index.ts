@@ -846,16 +846,17 @@ export const expireReservation = onTaskDispatched(
           return;
         }
 
+        const removedUserId = reservation.userId;
         const updates: Record<string, unknown> = {
           currentReservation: admin.firestore.FieldValue.delete(),
+          [`attendees.${removedUserId}`]: admin.firestore.FieldValue.delete(),
         };
 
-        if (data.attendees && data.attendees[reservation.userId]) {
-          updates[`attendees.${reservation.userId}`] =
-            admin.firestore.FieldValue.delete();
-        }
-
         tx.update(stationRef, updates);
+        const userRef = db.collection("users").doc(removedUserId);
+        tx.update(userRef, {
+          currentWaitlists: admin.firestore.FieldValue.arrayRemove(stationId),
+        });
         analyticsIncrementNoShowTx(tx, stationId, now);
       });
 
