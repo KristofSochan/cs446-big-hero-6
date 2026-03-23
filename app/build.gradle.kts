@@ -23,21 +23,29 @@ android {
     }
 
     buildTypes {
+        debug {
+            // DEV_SETUP: change this to true to use local firebase emulator
+            buildConfigField("boolean", "USE_FIREBASE_EMULATOR", "false")
+        }
         release {
             isMinifyEnabled = false
+            buildConfigField("boolean", "USE_FIREBASE_EMULATOR", "false")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
     kotlinOptions {
         jvmTarget = "17"
     }
+
     buildFeatures {
         compose = true
     }
@@ -60,24 +68,18 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
-    // Import the Firebase BoM
     implementation(platform("com.google.firebase:firebase-bom:34.9.0"))
-
-    // Firebase products
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-functions")
     implementation("com.google.firebase:firebase-messaging")
     implementation("com.google.firebase:firebase-auth")
 
-    // Navigation Compose
     implementation("androidx.navigation:navigation-compose:2.7.7")
-    
-    // Coroutines
+
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
-    
-    // ViewModel
+
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
 }
