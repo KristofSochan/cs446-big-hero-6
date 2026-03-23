@@ -48,9 +48,17 @@ service cloud.firestore {
     function sessionOkNonOwner() {
       let before = resource.data.currentSession;
       let after = request.resource.data.currentSession;
+      let operatorOnly = resource.data.operatorManagesSessionsOnly == true;
       return before == after ||
-        (before == null && after != null && after.userId == request.auth.uid) ||
-        (before != null && after == null && before.userId == request.auth.uid);
+        (!operatorOnly &&
+          before == null &&
+          after != null &&
+          after.userId == request.auth.uid &&
+          after.keys().hasOnly(['userId'])) ||
+        (!operatorOnly &&
+          before != null &&
+          after == null &&
+          before.userId == request.auth.uid);
     }
 
     function reservationOkNonOwner() {
