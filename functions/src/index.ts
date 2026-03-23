@@ -636,20 +636,20 @@ export const removeFromWaitlist = onCall(
         );
       }
 
-      const attendeeExists = !!st.attendees?.[userId];
-      if (!attendeeExists) {
-        return;
-      }
+      const stationUpdates = {} as Record<string, unknown>;
 
-      const stationUpdates = {
-        [`attendees.${userId}`]: admin.firestore.FieldValue.delete(),
-      } as Record<string, unknown>;
+      if (st.attendees?.[userId]) {
+        stationUpdates[`attendees.${userId}`] =
+          admin.firestore.FieldValue.delete();
+      }
 
       if (st.currentReservation?.userId === userId) {
         stationUpdates.currentReservation = admin.firestore.FieldValue.delete();
       }
 
-      tx.update(stationRef, stationUpdates);
+      if (Object.keys(stationUpdates).length > 0) {
+        tx.update(stationRef, stationUpdates);
+      }
 
       const userRef = db.collection("users").doc(userId);
       tx.update(userRef, {
