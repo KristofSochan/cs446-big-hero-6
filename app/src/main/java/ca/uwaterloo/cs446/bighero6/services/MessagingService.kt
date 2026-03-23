@@ -8,7 +8,7 @@ import com.google.firebase.messaging.RemoteMessage
 
 class MessagingService : FirebaseMessagingService(){
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
-        Log.d("MessagingService", "Remote Message Recieved")
+        Log.d("MessagingService", "Remote Message Received")
 
         // Method 1: Handle notification payload
         remoteMessage.notification?.let {
