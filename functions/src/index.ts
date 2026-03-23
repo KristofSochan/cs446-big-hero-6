@@ -847,16 +847,19 @@ export const expireReservation = onTaskDispatched(
         }
 
         const removedUserId = reservation.userId;
+        const userRef = db.collection("users").doc(removedUserId);
+        const userSnap = await tx.get(userRef);
         const updates: Record<string, unknown> = {
           currentReservation: admin.firestore.FieldValue.delete(),
           [`attendees.${removedUserId}`]: admin.firestore.FieldValue.delete(),
         };
 
         tx.update(stationRef, updates);
-        const userRef = db.collection("users").doc(removedUserId);
-        tx.update(userRef, {
-          currentWaitlists: admin.firestore.FieldValue.arrayRemove(stationId),
-        });
+        if (userSnap.exists) {
+          tx.update(userRef, {
+            currentWaitlists: admin.firestore.FieldValue.arrayRemove(stationId),
+          });
+        }
         analyticsIncrementNoShowTx(tx, stationId, now);
       });
 
