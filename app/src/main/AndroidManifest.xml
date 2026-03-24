@@ -22,10 +22,19 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Standard intent filter for deep links -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <!-- Accepts URIs that begin with "taplist://station” -->
+                <data android:scheme="taplist"
+                    android:host="station" />
+            </intent-filter>
+            <!-- Intent filter for deep links specifically from NFC reads -->
+            <intent-filter>
+                <action android:name="android.nfc.action.NDEF_DISCOVERED"/>
+                <category android:name="android.intent.category.DEFAULT"/>
                 <!-- Accepts URIs that begin with "taplist://station” -->
                 <data android:scheme="taplist"
                     android:host="station" />
