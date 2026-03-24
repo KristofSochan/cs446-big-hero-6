@@ -11,11 +11,11 @@ import {setGlobalOptions} from "firebase-functions";
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import {onTaskDispatched} from "firebase-functions/v2/tasks";
 import {onDocumentUpdated} from "firebase-functions/v2/firestore";
-import {getFunctions} from "firebase-admin/functions";
-import * as admin from "firebase-admin";
-import * as logger from "firebase-functions/logger";
 import {randomUUID} from "crypto";
-import {Station as StationDoc, Attendee} from "./types";
+import * as admin from "firebase-admin";
+import {getFunctions} from "firebase-admin/functions";
+import * as logger from "firebase-functions/logger";
+import {Attendee, Station as StationDoc} from "./types";
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -128,6 +128,9 @@ function analyticsIncrementNoShowTx(
 export const onStationUpdate = onDocumentUpdated(
   {document: "stations/{stationId}", region: REGION},
   async (event) => {
+    // before is the previous version of the document
+    // after is the current version of the document
+
     const before = event.data?.before.data() as StationDoc | undefined;
     const after = event.data?.after.data() as StationDoc | undefined;
     const stationId = event.params.stationId;
@@ -470,6 +473,58 @@ async function notifyUserAtPositionOne(
       data: {
         stationId: stationId,
         type: "position_one",
+      },
+      token: fcmToken,
+    };
+
+    await admin.messaging().send(message);
+    logger.info(`Notification sent to user ${userId} for station ${stationId}`);
+  } catch (error) {
+    logger.error(`Error sending notification to user ${userId}:`, error);
+  }
+}
+
+/**
+ * Sends an FCM notification when a user's session expires.
+ * @param {string} userId - The user ID.
+ * @param {string} stationId - The station ID.
+ * @param {string} stationName - The station name.
+ */
+async function notifyUserSessionExpired(
+  userId: string,
+  stationId: string,
+  stationName: string,
+) {
+  try {
+    // Get user's FCM token
+    const userDoc = await admin
+      .firestore()
+      .collection("users")
+      .doc(userId)
+      .get();
+
+    if (!userDoc.exists) {
+      logger.warn(`User ${userId} not found`);
+      return;
+    }
+
+    const fcmToken = userDoc.data()?.fcmToken;
+    if (!fcmToken) {
+      logger.info(`No FCM token for user ${userId} - skipping notification`);
+      return;
+    }
+
+    // Send notification
+    const message = {
+      notification: {
+        title: "You've been removed from line.",
+        body:
+          `You did not arrive at ${stationName} to begin your session. ` +
+          "Tap the NFC tag again to rejoin the line.",
+      },
+      data: {
+        stationId: stationId,
+        type: "did_not_join",
       },
       token: fcmToken,
     };
@@ -843,6 +898,7 @@ export const expireSession = onTaskDispatched(
       sessionId?: string;
     };
     const db = admin.firestore();
+    logger.info(`Expiring session for station ${stationId}`);
 
     try {
       const stationRef = db.collection("stations").doc(stationId);
@@ -902,6 +958,7 @@ export const expireSession = onTaskDispatched(
           typeof latestSession.sessionId === "string" ?
             latestSession.sessionId :
             null;
+
         if (sessionId && latestSessionId && latestSessionId !== sessionId) {
           logger.info(
             "Ignoring stale expireSession task in transaction for station " +
@@ -1068,6 +1125,14 @@ export const expireReservation = onTaskDispatched(
         `Expired reservation and removed user ${
           reservation.userId
         } from station ${stationId}`,
+      );
+
+      const stationName =
+        typeof station.name === "string" ? station.name : "this station";
+      await notifyUserSessionExpired(
+        reservation.userId,
+        stationId,
+        stationName,
       );
 
       // Reload station and advance queue for next person, if any.

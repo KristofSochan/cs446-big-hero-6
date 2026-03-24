@@ -67,12 +67,12 @@ class FirestoreRepository {
                 id = stationId,
                 createdAt = station.createdAt ?: Timestamp.now()
             )
-            
+
             db.collection("stations")
                 .document(stationId)
                 .set(stationToSave)
                 .await()
-            
+
             Result.success(stationId)
         } catch (e: Exception) {
             Result.failure(e)
@@ -188,7 +188,7 @@ class FirestoreRepository {
             Result.failure(e)
         }
     }
-    
+
     /**
      * Add user to waitlist (transaction-safe).
      * Attendees stored as map keyed by userId; joinedAt uses server timestamp.
@@ -331,7 +331,7 @@ class FirestoreRepository {
             Result.failure(e)
         }
     }
-    
+
     /**
      * Notify the current head of the queue and, if check-in enforcement is
      * enabled, start a check-in window for them.
@@ -347,7 +347,7 @@ class FirestoreRepository {
             Result.failure(e)
         }
     }
-    
+
     /**
      * Check if user is already in waitlist
      */
@@ -372,8 +372,12 @@ class FirestoreRepository {
         mode: String = "manual"
     ): Result<Unit> {
         return try {
-            applyStartSessionTx(stationId = stationId, userIdToSeat = userId)
-            Result.success(Unit)
+            return try {
+                applyStartSessionTx(stationId = stationId, userIdToSeat = userId)
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -441,7 +445,7 @@ class FirestoreRepository {
     /**
      * Get or create user document
      */
-    suspend fun getOrCreateUser(userId: String, name: String? = null): User {
+    suspend fun getOrCreateUser(userId: String, name: String? = null, fcmToken: String? = null): User {
         return try {
             val userDoc = db.collection("users")
                 .document(userId)
@@ -449,20 +453,28 @@ class FirestoreRepository {
                 .await()
             
             if (userDoc.exists()) {
-                val existingUser = userDoc.toObject(User::class.java)
+                var existingUser = userDoc.toObject(User::class.java)
+                // user exists but fcmToken should be updated on firebase
+                if (existingUser != null && fcmToken != null &&
+                   (existingUser.fcmToken == null || existingUser.fcmToken != fcmToken)){
+                    db.collection("users").document(userId).update("fcmToken", fcmToken).await()
+                    existingUser = existingUser.copy(fcmToken = fcmToken)
+                }
+
                 if (existingUser != null && name != null && existingUser.name != name) {
                     // Update name if provided and different
                     db.collection("users").document(userId).update("name", name).await()
-                    existingUser.copy(name = name)
-                } else {
-                    existingUser ?: createUserDocument(userId, name)
+                    existingUser = existingUser.copy(name = name)
                 }
+
+                // if existing user does not exist, make one
+                existingUser ?: createUserDocument(userId, name, fcmToken)
             } else {
-                createUserDocument(userId, name)
+                createUserDocument(userId, name, fcmToken)
             }
         } catch (e: Exception) {
             // Fallback: create user document
-            createUserDocument(userId, name)
+            createUserDocument(userId, name, fcmToken)
         }
     }
 
@@ -480,12 +492,12 @@ class FirestoreRepository {
                 onUpdate(snapshot?.toObject(User::class.java))
             }
     }
-    
-    private suspend fun createUserDocument(userId: String, name: String? = null): User {
+
+    private suspend fun createUserDocument(userId: String, name: String? = null, fcmToken: String? = null): User {
         val user = User(
             id = userId,  // Stored field "id" - mirrors document ID
+            fcmToken = fcmToken,
             name = name ?: "",
-            fcmToken = null,
             currentWaitlists = emptyList()
             // docId will be auto-mapped from document ID when reading
             // createdAt will be set by server via @ServerTimestamp
