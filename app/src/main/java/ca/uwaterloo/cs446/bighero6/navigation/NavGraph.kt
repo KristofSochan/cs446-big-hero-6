@@ -90,11 +90,15 @@ fun NavGraph(navController: NavHostController) {
         ) { backStackEntry ->
             val stationId = backStackEntry.arguments?.getString("stationId") ?: ""
             val autoStart = backStackEntry.arguments?.getString("autoStart")?.toBoolean() ?: true
-            StationInfoScreen(
-                stationId = stationId,
-                navController = navController,
-                autoStart = autoStart
-            )
+            AuthRouteGuard(
+                navController = navController
+            ) {
+                StationInfoScreen(
+                    stationId = stationId,
+                    navController = navController,
+                    autoStart = autoStart
+                )
+            }
         }
 
         composable(Screen.SessionActive("").route) { backStackEntry ->
