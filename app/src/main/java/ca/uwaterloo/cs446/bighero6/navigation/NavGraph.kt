@@ -6,6 +6,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.ui.screens.*
 
@@ -80,14 +81,24 @@ fun NavGraph(navController: NavHostController) {
             AboutScreen(navController = navController)
         }
 
-        composable(Screen.StationInfo("", true).route) { backStackEntry ->
+        composable(
+            route = Screen.StationInfo("", true).route,
+            deepLinks = listOf(
+                navDeepLink { uriPattern = "taplist://station/{stationId}" },
+                navDeepLink { uriPattern = "taplist://station/{stationId}?autoStart={autoStart}" }
+            )
+        ) { backStackEntry ->
             val stationId = backStackEntry.arguments?.getString("stationId") ?: ""
             val autoStart = backStackEntry.arguments?.getString("autoStart")?.toBoolean() ?: true
-            StationInfoScreen(
-                stationId = stationId,
-                navController = navController,
-                autoStart = autoStart
-            )
+            AuthRouteGuard(
+                navController = navController
+            ) {
+                StationInfoScreen(
+                    stationId = stationId,
+                    navController = navController,
+                    autoStart = autoStart
+                )
+            }
         }
 
         composable(Screen.SessionActive("").route) { backStackEntry ->
