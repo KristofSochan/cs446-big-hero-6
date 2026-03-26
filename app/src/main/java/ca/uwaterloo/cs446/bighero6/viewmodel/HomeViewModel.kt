@@ -4,6 +4,7 @@ import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ca.uwaterloo.cs446.bighero6.data.Station
+import ca.uwaterloo.cs446.bighero6.data.StationHistory
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import ca.uwaterloo.cs446.bighero6.ui.copy.GuestQueueCopy
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
@@ -12,6 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+
 /**
  * Summary of a waitlist for display on home screen
  */
@@ -22,6 +24,7 @@ data class WaitlistSummary(
     val position: Int,
     val showPositionToGuests: Boolean,
     val estimatedWaitTime: String,
+    val predictedWaitTimeSeconds: Int? = null,
     val isInSession: Boolean,
     val hasActiveSession: Boolean,
     val waitingCount: Int,
@@ -41,6 +44,7 @@ class HomeViewModel : ViewModel() {
     private var stationListeners = mutableMapOf<String, ListenerRegistration>()
     private var userListener: ListenerRegistration? = null
     private val checkinCountdownJobs = mutableMapOf<String, Job>()
+    private val stationHistories = mutableMapOf<String, StationHistory?>()
 
     val waitlists = MutableStateFlow<List<WaitlistSummary>>(emptyList())
     /** Check-in countdown remaining ms by stationId (only when user is head and has reservation). */
@@ -67,6 +71,7 @@ class HomeViewModel : ViewModel() {
                     checkinCountdownJobs[stationId]?.cancel()
                     checkinCountdownJobs.remove(stationId)
                     checkinRemainingByStation.value = checkinRemainingByStation.value - stationId
+                    stationHistories.remove(stationId)
                 }
                 
                 // Remove summaries for stations we are no longer in
@@ -80,7 +85,14 @@ class HomeViewModel : ViewModel() {
                                 // If station doesn't exist or we're not in it anymore, remove it
                                 waitlists.value = waitlists.value.filter { it.stationId != stationId }
                             } else {
-                                updateWaitlistSummary(station, userId)
+                                // Fetch history if not already present or refresh it
+                                viewModelScope.launch {
+                                    val historyResult = repository.getStationAnalytics(stationId)
+                                    if (historyResult.isSuccess) {
+                                        stationHistories[stationId] = historyResult.getOrThrow()
+                                    }
+                                    updateWaitlistSummary(station, userId)
+                                }
                             }
                         }
                         stationListeners[stationId] = listener
@@ -100,11 +112,18 @@ class HomeViewModel : ViewModel() {
         val hasReservationForMe = station.currentReservation?.userId == userId
         val isManualNotification = station.notificationMode == "manual"
         val operatorManagesSessionsOnly = station.operatorManagesSessionsOnly
+        
+        val history = stationHistories[station.id]
+        val isFirstAndStationFree = position == 1 && !hasActiveSession
+        val effectivePosition = if (!hasActiveSession && position > 0) position - 1 else position
+        val predictedWaitTimeSeconds = if (effectivePosition > 0) {
+            history?.getPredictedWaitTimeSeconds(effectivePosition)
+        } else null
 
         val eta = when {
             !isTimedMode -> ""
             isInSession -> "In session"
-            position <= 0 -> ""
+            position <= 0 || hasReservationForMe -> ""
             else -> GuestQueueCopy.estimatedWait(
                 position = position,
                 sessionDurationSeconds = station.sessionDurationSeconds,
@@ -119,6 +138,7 @@ class HomeViewModel : ViewModel() {
             position = position,
             showPositionToGuests = showPosition,
             estimatedWaitTime = eta,
+            predictedWaitTimeSeconds = predictedWaitTimeSeconds,
             isInSession = isInSession,
             hasActiveSession = hasActiveSession,
             waitingCount = waitingCount,
