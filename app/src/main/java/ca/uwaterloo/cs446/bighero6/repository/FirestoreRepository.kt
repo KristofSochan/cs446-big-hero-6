@@ -652,6 +652,16 @@ class FirestoreRepository {
                 .getHttpsCallable("endSession")
                 .call(hashMapOf("stationId" to stationId))
                 .await()
+            
+            // After successful Cloud Function call, log the END event
+            val now = Timestamp.now()
+            val historyRef = db.collection("stationAnalytics").document(stationId)
+            val historyEvent = mapOf(
+                "time" to now,
+                "type" to StationHistoryEvent.TYPE_END
+            )
+            historyRef.update("history", FieldValue.arrayUnion(historyEvent)).await()
+
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

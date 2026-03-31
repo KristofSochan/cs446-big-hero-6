@@ -166,10 +166,22 @@ fun AnalyticsStatsCard(
                 style = MaterialTheme.typography.bodyLarge
             )
 
+            Spacer(Modifier.height(8.dp))
+
             val predictedSeconds = stationHistory?.getPredictedSecondsPerPosition()
             Text(
-                text = "Expected time per position: ${
+                text = "Expected wait time per position: ${
                     if (predictedSeconds != null) formatSeconds(predictedSeconds.toLong()) else "N/A"
+                }",
+                style = MaterialTheme.typography.bodyLarge
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            val avgSessionSeconds = stationHistory?.getAverageSessionTimeSeconds()
+            Text(
+                text = "Average session time: ${
+                    if (avgSessionSeconds != null) formatSeconds(avgSessionSeconds.toLong()) else "N/A"
                 }",
                 style = MaterialTheme.typography.bodyLarge
             )
@@ -350,7 +362,7 @@ fun DailyHistogram(history: List<StationHistoryEvent>) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(180.dp)
+            .height(150.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxSize(),

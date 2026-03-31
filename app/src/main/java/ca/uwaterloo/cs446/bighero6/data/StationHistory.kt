@@ -14,6 +14,7 @@ data class StationHistoryEvent(
         const val TYPE_JOIN = "JOIN"
         const val TYPE_LEAVE = "LEAVE"
         const val TYPE_START = "START"
+        const val TYPE_END = "END"
     }
 }
 
@@ -64,7 +65,7 @@ data class StationHistory(
                 }
                 lastSessionTime = currentTime
                 numInQueue--
-            } else {
+            } else if (sessionEvent.type == StationHistoryEvent.TYPE_LEAVE) {
                 numInQueue--
             }
         }
@@ -123,5 +124,26 @@ data class StationHistory(
         }
         assert(numSpots >= 0 && secondsPerPosition >= 0)
         return numSpots * secondsPerPosition
+    }
+
+    fun getAverageSessionTimeSeconds(): Int? {
+        val filteredHistory = history.filter { it.time != null }.sortedBy { it.time }
+        val sessionTimes = mutableListOf<Long>()
+        var activeStartTime: Timestamp? = null
+        
+        for (event in filteredHistory) {
+            if (event.type == StationHistoryEvent.TYPE_START) {
+                activeStartTime = event.time
+            } else if (event.type == StationHistoryEvent.TYPE_END && activeStartTime != null) {
+                val duration = event.time!!.seconds - activeStartTime.seconds
+                if (duration >= 0) {
+                    sessionTimes.add(duration)
+                }
+                activeStartTime = null
+            }
+        }
+        
+        if (sessionTimes.isEmpty()) return null
+        return sessionTimes.average().toInt()
     }
 }
