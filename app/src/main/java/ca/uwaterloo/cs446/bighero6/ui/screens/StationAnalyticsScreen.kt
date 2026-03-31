@@ -129,7 +129,7 @@ fun StationAnalyticsScreen(
                 // All-time / Predicted Stats
                 item {
                     AnalyticsStatsCard(
-                        title = "Predictions & All-time Stats",
+                        title = "All-time Stats",
                         stationHistory = stationHistory,
                         isDaily = false
                     )
