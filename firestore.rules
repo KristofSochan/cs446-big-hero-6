@@ -6,8 +6,9 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isStationOwner() {
-      return signedIn() && request.auth.uid == resource.data.ownerId;
+    function isStationOwner(stationId) {
+      return signedIn() &&
+        get(/databases/$(database)/documents/stations/$(stationId)).data.ownerId == request.auth.uid;
     }
 
     function ownerIdUnchanged() {
@@ -105,16 +106,24 @@ service cloud.firestore {
       allow update: if signedIn() &&
         ownerIdUnchanged() &&
         (
-          isStationOwner() ||
+          signedIn() && request.auth.uid == resource.data.ownerId ||
           guestSelfServiceUpdate()
         );
     }
 
-    match /stationAnalytics/{stationId}/daily/{dayId} {
-      allow read: if signedIn() &&
-        exists(/databases/$(database)/documents/stations/$(stationId)) &&
+    match /stationAnalytics/{stationId} {
+      // Allow any signed-in user to read history so guests can see predicted wait times
+      allow read: if signedIn();
+
+      allow create: if signedIn() &&
         get(/databases/$(database)/documents/stations/$(stationId)).data.ownerId == request.auth.uid;
-      allow write: if false;
+
+      allow update: if signedIn();
+
+      match /daily/{dayId} {
+        allow read: if signedIn();
+        allow write: if false;
+      }
     }
   }
 }

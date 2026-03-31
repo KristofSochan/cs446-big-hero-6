@@ -3,15 +3,16 @@ package ca.uwaterloo.cs446.bighero6.repository
 import ca.uwaterloo.cs446.bighero6.Constants
 import ca.uwaterloo.cs446.bighero6.data.Attendee
 import ca.uwaterloo.cs446.bighero6.data.Station
+import ca.uwaterloo.cs446.bighero6.data.StationHistory
+import ca.uwaterloo.cs446.bighero6.data.StationHistoryEvent
 import ca.uwaterloo.cs446.bighero6.data.User
 import com.google.firebase.Timestamp
-import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
-import com.google.firebase.firestore.Query
 import com.google.firebase.functions.FirebaseFunctions
 import kotlinx.coroutines.tasks.await
+import java.util.Calendar
 import java.util.Date
 import java.util.UUID
 
@@ -29,13 +30,6 @@ data class SessionTimeResult(val initialRemainingMs: Long?)
  * Result of getReservationTime callable: initial remaining ms for check-in countdown, or null.
  */
 data class ReservationTimeResult(val initialRemainingMs: Long?)
-
-data class StationAnalyticsDaily(
-    val dayKey: String,
-    val totalSessions: Long,
-    val totalWaitTimeSeconds: Long,
-    val totalNoShows: Long
-)
 
 class FirestoreRepository {
     companion object {
@@ -72,6 +66,18 @@ class FirestoreRepository {
                 .document(stationId)
                 .set(stationToSave)
                 .await()
+
+            // Initialize empty StationHistory if it doesn't exist
+            val historyRef = db.collection("stationAnalytics").document(stationId)
+            val historyDoc = historyRef.get().await()
+            if (!historyDoc.exists()) {
+                val initialHistory = StationHistory(
+                    stationID = stationId,
+                    ownerID = station.ownerId,
+                    history = emptyList()
+                )
+                historyRef.set(initialHistory).await()
+            }
 
             Result.success(stationId)
         } catch (e: Exception) {
@@ -156,34 +162,73 @@ class FirestoreRepository {
     }
 
     /**
-     * Fetch daily analytics for a station (newest first).
+     * Fetch analytics history for a station.
      * @param days Limit number of days to fetch. If null, fetch all.
      */
-    suspend fun getStationAnalyticsDaily(
+    suspend fun getStationAnalytics(
         stationId: String,
-        days: Int? = 7
-    ): Result<List<StationAnalyticsDaily>> {
+        days: Int? = null
+    ): Result<StationHistory> {
         return try {
-            var query = db.collection("stationAnalytics")
+            val doc = db.collection("stationAnalytics")
                 .document(stationId)
-                .collection("daily")
-                .orderBy(FieldPath.documentId(), Query.Direction.DESCENDING)
-
-            if (days != null) {
-                query = query.limit(days.toLong())
+                .get()
+                .await()
+            
+            val fullHistory = doc.toObject(StationHistory::class.java) 
+                ?: return Result.failure(Exception("Analytics history not found"))
+            
+            val cutoff = if (days != null) {
+                Timestamp(Date(System.currentTimeMillis() - (days.toLong() * 24 * 60 * 60 * 1000L)))
+            } else {
+                null
             }
-
-            val snap = query.get().await()
-            val items = snap.documents.map { doc ->
-                StationAnalyticsDaily(
-                    dayKey = doc.id,
-                    totalSessions = (doc.getLong("totalSessions") ?: 0L),
-                    totalWaitTimeSeconds = (doc.getLong("totalWaitTimeSeconds") ?: 0L),
-                    totalNoShows = (doc.getLong("totalNoShows") ?: 0L)
-                )
+            
+            val filteredAndSorted = fullHistory.history.filter { event ->
+                val eventTime = event.time
+                // Exclude events with null timestamps
+                eventTime != null && (cutoff == null || eventTime >= cutoff)
+            }.sortedByDescending { event ->
+                event.time?.seconds ?: 0L
             }
+            
+            Result.success(fullHistory.copy(history = filteredAndSorted))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
-            Result.success(items)
+    /**
+     * Fetch event history for the current calendar day (since midnight local time).
+     */
+    suspend fun getStationAnalyticsDaily(
+        stationId: String
+    ): Result<StationHistory> {
+        return try {
+            val doc = db.collection("stationAnalytics")
+                .document(stationId)
+                .get()
+                .await()
+            
+            val fullHistory = doc.toObject(StationHistory::class.java) 
+                ?: return Result.failure(Exception("Analytics history not found"))
+            
+            // Calculate midnight today in local time
+            val calendar = Calendar.getInstance()
+            calendar.set(Calendar.HOUR_OF_DAY, 0)
+            calendar.set(Calendar.MINUTE, 0)
+            calendar.set(Calendar.SECOND, 0)
+            calendar.set(Calendar.MILLISECOND, 0)
+            val cutoff = Timestamp(calendar.time)
+            
+            val filteredAndSorted = fullHistory.history.filter { event ->
+                val eventTime = event.time
+                eventTime != null && eventTime >= cutoff
+            }.sortedByDescending { event ->
+                event.time?.seconds ?: 0L
+            }
+            
+            Result.success(fullHistory.copy(history = filteredAndSorted))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -212,16 +257,25 @@ class FirestoreRepository {
                         throw IllegalStateException(SINGLE_STATION_WAITLIST_POLICY_MESSAGE)
                     }
                 }
-                val newAttendee = mutableMapOf(
+                val now = Timestamp.now()
+                val newAttendee = mutableMapOf<String, Any>(
                     "userId" to userId,
                     "status" to "waiting",
-                    "joinedAt" to FieldValue.serverTimestamp()
+                    "joinedAt" to now
                 )
                 if (form.isNotEmpty()) {
                     newAttendee["form"] = form
                 }
                 transaction.update(stationRef, "attendees.$userId", newAttendee)
                 transaction.update(userRef, "currentWaitlists", FieldValue.arrayUnion(stationId))
+
+                // Update analytics history log
+                val historyRef = db.collection("stationAnalytics").document(stationId)
+                val historyEvent = mapOf(
+                    "time" to now,
+                    "type" to StationHistoryEvent.TYPE_JOIN
+                )
+                transaction.update(historyRef, "history", FieldValue.arrayUnion(historyEvent))
             }.await()
             Result.success(Unit)
         } catch (e: Exception) {
@@ -240,6 +294,16 @@ class FirestoreRepository {
                     )
                 )
                 .await()
+            
+            // Manual update of LEAVE event since the Cloud Function doesn't handle history array yet
+            val now = Timestamp.now()
+            val historyRef = db.collection("stationAnalytics").document(stationId)
+            val historyEvent = mapOf(
+                "time" to now,
+                "type" to StationHistoryEvent.TYPE_LEAVE
+            )
+            historyRef.update("history", FieldValue.arrayUnion(historyEvent)).await()
+
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -372,12 +436,8 @@ class FirestoreRepository {
         mode: String = "manual"
     ): Result<Unit> {
         return try {
-            return try {
-                applyStartSessionTx(stationId = stationId, userIdToSeat = userId)
-                Result.success(Unit)
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
+            applyStartSessionTx(stationId = stationId, userIdToSeat = userId)
+            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -420,13 +480,14 @@ class FirestoreRepository {
                 }
             }
 
-            val currentSession = currentStation.currentSession
+            var activeSession = currentStation.currentSession
             val now = Timestamp.now()
-            if (currentSession?.expiresAt != null &&
-                currentSession.expiresAt.seconds * 1000 < now.seconds * 1000
+            if (activeSession?.expiresAt != null &&
+                activeSession.expiresAt.seconds < now.seconds
             ) {
                 transaction.update(stationRef, "currentSession", null)
-            } else if (currentSession != null) {
+                activeSession = null
+            } else if (activeSession != null) {
                 throw IllegalStateException("Station is currently in use")
             }
 
@@ -434,11 +495,17 @@ class FirestoreRepository {
             transaction.update(stationRef, "attendees.$userIdToSeat", FieldValue.delete())
 
             // Unconditionally clear currentReservation when ANY session starts.
-            // This ensures that if User A was reserved but User B takes the station,
-            // User A no longer sees "Your turn!" copy.
             if (currentStation.currentReservation != null) {
                 transaction.update(stationRef, "currentReservation", FieldValue.delete())
             }
+
+            // Update analytics history log
+            val historyRef = db.collection("stationAnalytics").document(stationId)
+            val historyEvent = mapOf(
+                "time" to now,
+                "type" to StationHistoryEvent.TYPE_START
+            )
+            transaction.update(historyRef, "history", FieldValue.arrayUnion(historyEvent))
         }.await()
     }
     
@@ -585,6 +652,16 @@ class FirestoreRepository {
                 .getHttpsCallable("endSession")
                 .call(hashMapOf("stationId" to stationId))
                 .await()
+            
+            // After successful Cloud Function call, log the END event
+            val now = Timestamp.now()
+            val historyRef = db.collection("stationAnalytics").document(stationId)
+            val historyEvent = mapOf(
+                "time" to now,
+                "type" to StationHistoryEvent.TYPE_END
+            )
+            historyRef.update("history", FieldValue.arrayUnion(historyEvent)).await()
+
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

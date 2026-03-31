@@ -50,7 +50,7 @@ fun MyWaitlistsScreen(
             Text("My Waitlists", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 8.dp))
             
             if (SHOW_SIMULATE_NFC_BUTTON) {
-                val hardCodedTestStationId = "91a7360c-1a1b-4948-af0d-e679ab41805b"
+                val hardCodedTestStationId = "7e0fab7e-a834-4242-bd34-588224c7ec71"
                 Button(
                     onClick = {
                         navController.navigate(
@@ -66,22 +66,22 @@ fun MyWaitlistsScreen(
                 }
             }
             
-            if (SHOW_SIMULATE_NFC_BUTTON) {
-                val hardCodedTestStationId = "5d8ae7e1-1c9c-4bc2-9bce-f363dde21d0f"
-                Button(
-                    onClick = {
-                        navController.navigate(
-                            Screen.StationInfo("").createRoute(
-                                hardCodedTestStationId,
-                                autoStart = true
-                            )
-                        )
-                    },
-                    modifier = Modifier.padding(bottom = 8.dp)
-                ) {
-                    Text("Test: Go to Station (Simulate NFC)")
-                }
-            }
+//            if (SHOW_SIMULATE_NFC_BUTTON) {
+//                val hardCodedTestStationId = "5d8ae7e1-1c9c-4bc2-9bce-f363dde21d0f"
+//                Button(
+//                    onClick = {
+//                        navController.navigate(
+//                            Screen.StationInfo("").createRoute(
+//                                hardCodedTestStationId,
+//                                autoStart = true
+//                            )
+//                        )
+//                    },
+//                    modifier = Modifier.padding(bottom = 8.dp)
+//                ) {
+//                    Text("Test: Go to Station (Simulate NFC)")
+//                }
+//            }
 
             if (SHOW_RESET_USER_ID_BUTTON) {
                 Button(
@@ -160,6 +160,22 @@ fun MyWaitlistsScreen(
                                 statusInfo.secondaryText?.let { sec ->
                                     Text(
                                         sec,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+
+                                if (waitlist.predictedWaitTimeSeconds != null) {
+                                    val minutes = waitlist.predictedWaitTimeSeconds / 60
+                                    val seconds = waitlist.predictedWaitTimeSeconds % 60
+                                    val timeStr = if (minutes > 0) {
+                                        String.format(Locale.getDefault(), "%d min %02d sec", minutes, seconds)
+                                    } else {
+                                        String.format(Locale.getDefault(), "%d sec", seconds)
+                                    }
+                                    Text(
+                                        "Predicted wait: $timeStr",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(top = 4.dp)
