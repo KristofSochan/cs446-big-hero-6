@@ -60,7 +60,7 @@ fun MyStationsScreen(navController: NavController) {
     }
 
     LaunchedEffect(userId) {
-        val listener = repository.subscribeToOwnedStations(userId) { updatedStations ->
+        repository.subscribeToOwnedStations(userId) { updatedStations ->
             stations = updatedStations
         }
     }
