@@ -34,34 +34,30 @@ data class StationHistory(
 
         val intervals = mutableListOf<Long>()
         var numInQueue = 0
-        var lastSessionTime : Timestamp? = null
-        var lastJoinTime : Timestamp? = null
+        var lastSessionTime: Timestamp? = null
+        var lastTimeEmpty: Timestamp? = null
+
+//        Log.d("StationHistory", "BEGINNING OF ALL")
+
         for (sessionEvent in filteredHistory) {
             val currentTime = sessionEvent.time
             if (sessionEvent.type == StationHistoryEvent.TYPE_JOIN) {
-                lastJoinTime = currentTime
+                if (numInQueue == 0) {
+                    lastTimeEmpty = currentTime
+                }
                 numInQueue++
             } else if (sessionEvent.type == StationHistoryEvent.TYPE_START) {
-                if (numInQueue == 1) {
-                    var startSeconds = Long.MIN_VALUE
-                    if (lastSessionTime != null) {
-                        startSeconds = max(startSeconds, lastSessionTime.seconds)
-                    }
-                    if (lastJoinTime != null) {
-                        startSeconds = max(startSeconds, lastJoinTime.seconds)
-                    }
-                    if (currentTime != null && startSeconds != Long.MIN_VALUE) {
-                        val diff = currentTime.seconds - startSeconds
-                        assert(diff >= 0)
-                        intervals.add(diff)
-                    }
-                } else {
-                    assert(numInQueue > 1)
-                    if (lastSessionTime != null && currentTime != null) {
-                        val diff = currentTime.seconds - lastSessionTime.seconds
-                        assert(diff >= 0)
-                        intervals.add(diff)
-                    }
+                var startSeconds = Long.MIN_VALUE
+                if (lastSessionTime != null) {
+                    startSeconds = max(startSeconds, lastSessionTime.seconds)
+                }
+                if (lastTimeEmpty != null) {
+                    startSeconds = max(startSeconds, lastTimeEmpty.seconds)
+                }
+                if (currentTime != null && startSeconds != Long.MIN_VALUE) {
+                    val diff = currentTime.seconds - startSeconds
+                    assert(diff >= 0)
+                    intervals.add(diff)
                 }
                 lastSessionTime = currentTime
                 numInQueue--
@@ -71,6 +67,10 @@ data class StationHistory(
         }
 
         if (intervals.isEmpty()) return null
+
+//        for (i in intervals) {
+//            Log.d("StationHistory", i.toString())
+//        }
 
         // Most recent intervals first
         val recentIntervals = intervals.reversed()

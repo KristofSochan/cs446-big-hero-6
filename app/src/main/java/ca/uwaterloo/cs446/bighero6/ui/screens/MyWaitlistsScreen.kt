@@ -141,7 +141,7 @@ fun MyWaitlistsScreen(
                                     isInSession = waitlist.isInSession,
                                     isManualNotification = waitlist.isManualNotification,
                                     operatorManagesSessionsOnly = waitlist.operatorManagesSessionsOnly,
-                                    estimatedWaitTime = waitlist.estimatedWaitTime,
+                                    estimatedWaitTime = "", // Removed estimatedWaitTime
                                     stationName = waitlist.stationName
                                 )
 
