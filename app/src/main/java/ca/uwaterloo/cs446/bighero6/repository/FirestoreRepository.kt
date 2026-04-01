@@ -285,6 +285,15 @@ class FirestoreRepository {
 
     suspend fun removeFromWaitlist(stationId: String, userId: String): Result<Unit> {
         return try {
+            // Log LEAVE event BEFORE calling the function to ensure it's captured
+            val now = Timestamp.now()
+            val historyRef = db.collection("stationAnalytics").document(stationId)
+            val historyEvent = mapOf(
+                "time" to now,
+                "type" to StationHistoryEvent.TYPE_LEAVE
+            )
+            historyRef.update("history", FieldValue.arrayUnion(historyEvent)).await()
+
             functions
                 .getHttpsCallable("removeFromWaitlist")
                 .call(
@@ -295,15 +304,6 @@ class FirestoreRepository {
                 )
                 .await()
             
-            // Manual update of LEAVE event since the Cloud Function doesn't handle history array yet
-            val now = Timestamp.now()
-            val historyRef = db.collection("stationAnalytics").document(stationId)
-            val historyEvent = mapOf(
-                "time" to now,
-                "type" to StationHistoryEvent.TYPE_LEAVE
-            )
-            historyRef.update("history", FieldValue.arrayUnion(historyEvent)).await()
-
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
