@@ -38,7 +38,6 @@ class MainActivity : ComponentActivity() {
         askNotificationPermission()
     }
 
-    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
