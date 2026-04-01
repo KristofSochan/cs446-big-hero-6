@@ -7,7 +7,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
-import ca.uwaterloo.cs446.bighero6.data.Station
 import ca.uwaterloo.cs446.bighero6.ui.screens.*
 
 sealed class Screen(val route: String) {
@@ -37,6 +36,9 @@ sealed class Screen(val route: String) {
     data class StationAnalytics(val stationId: String) : Screen("analytics/{stationId}") {
         fun createRoute(stationId: String) = "analytics/$stationId"
     }
+    data class WriteNfc(val stationId: String) : Screen("write_nfc/{stationId}") {
+        fun createRoute(stationId: String) = "write_nfc/$stationId"
+    }
 }
 
 @Composable
@@ -55,7 +57,7 @@ fun NavGraph(navController: NavHostController) {
 
         composable(
             route = Screen.UserSetup.route,
-            arguments = listOf(navArgument("name") { 
+            arguments = listOf(navArgument("name") {
                 type = NavType.StringType
                 nullable = true
                 defaultValue = null
@@ -64,7 +66,7 @@ fun NavGraph(navController: NavHostController) {
             val name = backStackEntry.arguments?.getString("name")
             UserSetupScreen(navController = navController, initialName = name)
         }
-        
+
         composable(Screen.MyWaitlists.route) {
             MyWaitlistsScreen(navController = navController)
         }
@@ -76,7 +78,7 @@ fun NavGraph(navController: NavHostController) {
         composable(Screen.SessionCreation.route) {
             SessionCreationScreen(navController = navController)
         }
-        
+
         composable(Screen.About.route) {
             AboutScreen(navController = navController)
         }
@@ -128,6 +130,14 @@ fun NavGraph(navController: NavHostController) {
         composable(Screen.StationAnalytics("").route) { backStackEntry ->
             val stationId = backStackEntry.arguments?.getString("stationId") ?: ""
             StationAnalyticsScreen(
+                stationId = stationId,
+                navController = navController
+            )
+        }
+
+        composable(Screen.WriteNfc("").route) { backStackEntry ->
+            val stationId = backStackEntry.arguments?.getString("stationId") ?: ""
+            WriteNfcScreen(
                 stationId = stationId,
                 navController = navController
             )
