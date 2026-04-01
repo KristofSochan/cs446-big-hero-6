@@ -114,7 +114,6 @@ class HomeViewModel : ViewModel() {
         val operatorManagesSessionsOnly = station.operatorManagesSessionsOnly
         
         val history = stationHistories[station.id]
-        val isFirstAndStationFree = position == 1 && !hasActiveSession
         val effectivePosition = if (!hasActiveSession && position > 0) position - 1 else position
         val predictedWaitTimeSeconds = if (effectivePosition > 0) {
             history?.getPredictedWaitTimeSeconds(effectivePosition)

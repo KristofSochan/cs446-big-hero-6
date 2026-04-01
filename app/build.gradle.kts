@@ -8,9 +8,7 @@ plugins {
 
 android {
     namespace = "ca.uwaterloo.cs446.bighero6"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "ca.uwaterloo.cs446.bighero6"
@@ -28,7 +26,9 @@ android {
             buildConfigField("boolean", "USE_FIREBASE_EMULATOR", "false")
         }
         release {
-            isMinifyEnabled = false
+            isDebuggable = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             buildConfigField("boolean", "USE_FIREBASE_EMULATOR", "false")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
