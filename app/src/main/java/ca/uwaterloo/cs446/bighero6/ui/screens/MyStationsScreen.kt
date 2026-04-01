@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -16,7 +17,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import ca.uwaterloo.cs446.bighero6.data.Station
-import ca.uwaterloo.cs446.bighero6.navigation.Screen
 import ca.uwaterloo.cs446.bighero6.repository.FirestoreRepository
 import ca.uwaterloo.cs446.bighero6.ui.components.TapListScaffold
 import ca.uwaterloo.cs446.bighero6.util.DeviceIdManager
@@ -161,7 +161,12 @@ fun MyStationsScreen(navController: NavController) {
                                                         fontWeight = FontWeight.Bold
                                                     )
                                                 },
-                                                onClick = { expanded = false }
+                                                onClick = {
+                                                    expanded = false
+                                                    navController.navigate(
+                                                        Screen.WriteNfc(station.id).createRoute(station.id)
+                                                    )
+                                                }
                                             )
                                             DropdownMenuItem(
                                                 text = { Text("View queue") },
