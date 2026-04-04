@@ -4,6 +4,7 @@ TapList - A waitlist management app using NFC technology
 
 - Members: Adam Shamaa (adam-shamaa), Anees Al-Saggaf (timAwsomeguy), Kristof Sochan (KristofSochan), Kushal Mujral (Kushion32), Owen Gallagher (oman276), Ryan Guo (ryanguorocket)
 - Links:
+  - [App Demo](https://youtu.be/STLZWyKNf80)
   - [Team contract](./docs/team-contract.md)
   - [Meeting minutes](./docs/meetings/)
 
